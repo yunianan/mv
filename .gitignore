@@ -1,0 +1,12 @@
+node_modules/
+out/
+.runtime/
+.DS_Store
+*.log
+assets/*
+!assets/README.md
+lyrics.json
+src/mv-data.js
+.env
+.env.*
+!.env.example
