@@ -7,11 +7,12 @@
   "scripts": {
     "sheet": "node render.mjs --sheet=0,1,2,3,4,5 --out=out/sheet.jpg",
     "video": "node render.mjs --clip --out=out/video.mp4",
-    "import-lyrics": "node tools/import-lyrics.mjs"
+    "import-lyrics": "node tools/import-lyrics.mjs",
+    "postinstall": "node tools/patch-brush-resources.mjs"
   },
   "dependencies": {
     "p5": "^2.3.3",
-    "p5.brush": "^2.2.3",
+    "p5.brush": "2.2.3",
     "puppeteer-core": "^25.11.0"
   }
 }

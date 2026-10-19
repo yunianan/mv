@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateRange(1,8)][int]$Workers = 2,
+    [ValidateRange(1,8)][int]$Workers = 1,
     [switch]$EncodeOnly
 )
 $ErrorActionPreference = 'Stop'

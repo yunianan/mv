@@ -20,6 +20,8 @@ cd ./-mv
 npm ci
 ```
 
+安装时会自动运行 `tools/patch-brush-resources.mjs`，为固定版本 `p5.brush 2.2.3` 应用上传遮罩资源补丁：复用同一个 Canvas，在尺寸变化时释放旧后备存储，减少 GPU 内存分配，并保留浏览器默认的 2D 硬件加速选择。重复执行补丁是安全的；版本或代码片段不匹配时会停止并报错。
+
 把对应版本素材放到：
 
 ```text
@@ -42,7 +44,7 @@ node render.mjs --sheet=20,79,123,183,260,286 --cols=3 --w=480 --out=out/check/p
 完整逐帧渲染和编码：
 
 ```powershell
-.\逐帧渲染.ps1 -Workers 4
+.\逐帧渲染.ps1
 ```
 
 输出：
@@ -53,13 +55,14 @@ out/我怀念的-留在右边的位置-MV.mp4
 ```
 
 中断后再次执行脚本会跳过完整帧。改过场景后，应清理对应时间范围的旧帧再重新渲染。
+默认使用 1 个 worker，每 48 帧关闭并重建浏览器，控制 GPU 资源占用。每帧捕获前后检查 WebGL 上下文，并拒绝近黑画面；失败批次会重试，已有完整帧会保留。`--workers` 可调整并行数，但会增加显存和内存压力。
 若只需编码完整的已有帧：
 
 ```powershell
 .\逐帧渲染.ps1 -EncodeOnly
 ```
 
-`render.mjs` 也支持 `--chrome`、`--ffmpeg`、`--workers`、`--range`、`--strip`、`--crop-at` 等参数。Windows默认D3D11，并优先高性能GPU；实际并行速度取决于GPU与CPU。
+`render.mjs` 也支持 `--chrome`、`--ffmpeg`、`--workers`、`--range`、`--strip`、`--crop-at` 等参数。Windows默认D3D11，并优先高性能GPU。
 
 ## 源码布局
 
@@ -71,6 +74,7 @@ out/我怀念的-留在右边的位置-MV.mp4
 | `src/config.js` | 音轨、时长、节奏参数 |
 | `src/core.js` / `timeline.js` | 水彩引擎、合成、时间轴 |
 | `tools/import-lyrics.mjs` | 导入本地LRC并生成运行数据 |
+| `tools/patch-brush-resources.mjs` | 安装时自动应用 p5.brush Canvas 资源补丁 |
 | `tools/preview.mjs` | 逐镜、动作条带、特写与转场检查 |
 | `STORYBOARD.md` / `shots.json` | 逐镜动作、理解顺序与Out转场 |
 | `TASTE.md` / `TIMELINE.md` | 角色、画面纪律和音乐结构 |

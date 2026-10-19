@@ -70,16 +70,17 @@ const gpu = args['soft-gl'] ? ['--use-angle=swiftshader', '--enable-unsafe-swift
   : process.platform === 'win32' ? ['--use-angle=d3d11'] : process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-gl=angle'];
 // Ubuntu 23.10+ blocks Chrome's user-namespace sandbox; headless rendering of local files doesn't need it.
 const sandbox = process.platform === 'linux' ? ['--no-sandbox'] : [];
-const browser = await puppeteer.launch({
-  executablePath: CHROME, headless: true, protocolTimeout: 0,
-  args: [...sandbox, '--allow-file-access-from-files', '--ignore-gpu-blocklist', '--force-high-performance-gpu', ...gpu, '--enable-gpu-rasterization', '--window-size=1920,1080', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
+const launchBrowser = () => puppeteer.launch({
+  executablePath: CHROME, headless: true, protocolTimeout: 120000,
+  args: [...sandbox, '--allow-file-access-from-files', '--ignore-gpu-blocklist', '--force-high-performance-gpu', ...gpu, '--disable-gpu-shader-disk-cache', '--enable-gpu-rasterization', '--window-size=1920,1080', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
 });
+let browser = await launchBrowser();
 async function openPage(tag = '') {
   const page = await browser.newPage();
   page.on('console', m => { if (['error', 'warn'].includes(m.type())) console.log(`[page${tag}]`, m.text()); });
   page.on('pageerror', e => console.log(`[page error${tag}]`, e.message));
-  await page.goto(pathToFileURL(resolve('studio.html')).href + '?render', { waitUntil: 'networkidle0' });
-  await page.waitForFunction('window.ready === true', { timeout: 60000 });
+  await page.goto(pathToFileURL(resolve('studio.html')).href + '?render', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForFunction('window.ready === true && window.firstFrameDrawn === true', { timeout: 60000 });
   if (args.loop) {
     const ok = await page.evaluate(name => { if (!LOOPS[name]) return false; window.LOOP = LOOPS[name]; return true; }, args.loop);
     if (!ok) { console.error(`no loop named "${args.loop}"`); process.exit(1); }
@@ -87,12 +88,38 @@ async function openPage(tag = '') {
   return page;
 }
 const frameOf = async (page, t, type, q) => {
-  const url = await page.evaluate((t, type, q) => window.renderAt(t, type, q), t, type, q);
+  let timer, onCrash;
+  const failed = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Frame ${t.toFixed(3)}s timed out`)), 30000);
+    onCrash = error => reject(error);
+    page.once('error', onCrash);
+  });
+  let url;
+  try {
+  url = await Promise.race([page.evaluate(async (t, type, q) => {
+    if (drawingContext.isContextLost()) throw new Error('WebGL context lost before frame');
+    const result = await window.renderAt(t, type, q);
+    if (drawingContext.isContextLost()) throw new Error('WebGL context lost during frame');
+    // This MV always has a painted paper background; a near-black frame is a failed GPU capture.
+    const probe = window.__frameProbeCanvas ||= Object.assign(document.createElement('canvas'), { width: 16, height: 9 });
+    const ctx = probe.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(outC, 0, 0, 16, 9);
+    const pixels = ctx.getImageData(0, 0, 16, 9).data;
+    let brightness = 0;
+    for (let i = 0; i < pixels.length; i += 4) brightness += pixels[i] + pixels[i + 1] + pixels[i + 2];
+    if (brightness / (16 * 9 * 3) < 12) throw new Error('Near-black GPU capture; frame was not written');
+    return result;
+  }, t, type, q), failed]);
+  } finally {
+    clearTimeout(timer);
+    page.off('error', onCrash);
+  }
   return Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
 };
 // the length of whatever is being rendered: a loop's .len, or the video's duration
 const lengthOf = page => page.evaluate(() => window.LOOP ? window.LOOP.len : DUR);
 
+try {
 if (args.sheet || args.strip) {
   const page = await openPage(), out = args.out || 'out/sheet.jpg'; mkdirSync(dirname(out), { recursive: true });
   let ts;
@@ -124,24 +151,43 @@ if (args.sheet || args.strip) {
 } else if (args.frames) {
   // Parallel and resumable: each worker pulls the next missing frame; files are written atomically.
   const probe = await openPage(), len = await lengthOf(probe); await probe.close();
-  const [a, b] = args.range ? span(args.range) : [0, len], workers = +(args.workers || 4);
+  const [a, b] = args.range ? span(args.range) : [0, len], workers = +(args.workers || 1);
   mkdirSync(FRAMES_DIR, { recursive: true });
   const first = Math.round(a * fps), last = Math.min(Math.ceil(len * fps) - 1, Math.round(b * fps) - 1);
   const todo = []; for (let i = first; i <= last; i++) { const f = `${FRAMES_DIR}/f${String(i).padStart(5, '0')}.jpg`; if (!existsSync(f) || statSync(f).size < 1000) todo.push(i); }
   console.log(`${todo.length} frames to render (${last - first + 1 - todo.length} already done), ${workers} workers`);
-  let next = 0, done = 0; const start = Date.now();
-  await Promise.all(Array.from({ length: workers }, async (_, w) => {
-    const page = await openPage('#' + w);
-    while (next < todo.length) {
-      const i = todo[next++], f = `${FRAMES_DIR}/f${String(i).padStart(5, '0')}.jpg`;
-      const buf = await frameOf(page, i / fps, 'image/jpeg', .94);
-      writeFileSync(f + '.tmp', buf); renameSync(f + '.tmp', f);
-      if (++done % 24 === 0 || done === todo.length) {
-        const el = (Date.now() - start) / 1000;
-        console.log(`frame ${done}/${todo.length}  ${(el / done * 1000).toFixed(0)} ms/frame effective  eta ${((todo.length - done) * el / done / 60).toFixed(1)} min`);
+  let done = 0; const start = Date.now(), batchSize = 48;
+  for (let base = 0; base < todo.length; base += batchSize) {
+    const end = Math.min(base + batchSize, todo.length);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        // Release the duration probe's textures too, before the first worker page.
+        await browser.close().catch(() => {});
+        browser = await launchBrowser();
+        let next = base;
+        const results = await Promise.allSettled(Array.from({ length: workers }, async (_, w) => {
+          const page = await openPage('#' + w);
+          while (next < end) {
+            const i = todo[next++], f = `${FRAMES_DIR}/f${String(i).padStart(5, '0')}.jpg`;
+            if (existsSync(f) && statSync(f).size >= 1000) continue;
+            const buf = await frameOf(page, i / fps, 'image/jpeg', .94);
+            writeFileSync(f + '.tmp', buf); renameSync(f + '.tmp', f);
+            if (++done % 24 === 0 || done === todo.length) {
+              const el = (Date.now() - start) / 1000;
+              console.log(`frame ${done}/${todo.length}  ${(el / done * 1000).toFixed(0)} ms/frame effective  eta ${((todo.length - done) * el / done / 60).toFixed(1)} min`);
+            }
+          }
+        }));
+        const failure = results.find(r => r.status === 'rejected');
+        if (failure) throw failure.reason;
+        break;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        console.warn(`GPU batch retry ${attempt + 1}/2: ${error.message}`);
       }
     }
-  }));
+    console.log(`GPU batch complete: ${done}/${todo.length}`);
+  }
 } else if (args.clip) {
   const page = await openPage(), len = await lengthOf(page);
   const [a, b] = args.range ? span(args.range) : typeof args.clip === 'string' ? span(args.clip) : [0, len];
@@ -164,4 +210,6 @@ if (args.sheet || args.strip) {
 } else {
   console.log('nothing to do: see the usage notes at the top of render.mjs');
 }
-await browser.close();
+} finally {
+  await browser.close();
+}

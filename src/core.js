@@ -298,6 +298,7 @@ function draw() {
   image(paperG, 0, 0);
   drawWorld(T);
   pop();
+  window.firstFrameDrawn = true;
 }
 function composite(t) {
   const c = outX;
