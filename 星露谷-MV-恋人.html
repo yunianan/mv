@@ -1021,19 +1021,21 @@ draw(START);
 window.READY = true;
 
 
-// —— 24 fps 循环播放整片 ——
-const t0 = performance.now();
-const STEP = 1000 / 24;
-let last = -1;
-function tick() {
-  const ms = performance.now() - t0;
-  const total = window.DUR || 275.925;
-  const t = (ms / 1000) % total;
-  const f = Math.floor(ms / STEP);
-  if (f !== last) { last = f; window.render(t); }
-  requestAnimationFrame(tick);
+// —— 24 fps 循环播放整片；?still=1 时交给外部逐帧渲染 ——
+if (!/still/.test(location.search)) {
+  const t0 = performance.now();
+  const STEP = 1000 / 24;
+  let last = -1;
+  function tick() {
+    const ms = performance.now() - t0;
+    const total = window.DUR || 275.925;
+    const t = (ms / 1000) % total;
+    const f = Math.floor(ms / STEP);
+    if (f !== last) { last = f; window.render(t); }
+    requestAnimationFrame(tick);
+  }
+  tick();
 }
-tick();
 </script>
 </body>
 </html>
