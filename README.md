@@ -63,6 +63,8 @@ npx serve src/stardew        # 打开 http://localhost:3000
 node src/stardew/tools/bundle-film.mjs src/stardew film-standalone.html
 ```
 
+雨是三层视差（远 3 px、中 6 px、近 8 px，速度 54/110/200 px·s⁻¹，斜率 0.5/0.6/0.68），接地那一条有水花；背景雨画在房子之前、近景雨画在人之后，所以房子不会被雨穿透。
+
 逐帧渲染成视频用的是外部渲染器（驱动 `window.render(t)` 逐帧截图再交给 ffmpeg），这部片子渲染了 6622 帧；字幕与对话框按 24 fps 逐帧重画，所以推镜头时不受影响。
 
 ### 星露谷的 .xnb 是怎么解开的

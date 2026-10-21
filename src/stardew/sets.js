@@ -1,4 +1,4 @@
-﻿// 场景库：每个 set 都只依赖 (g, t, lt, u, spec)，纯函数，可任意顺序求值
+// 场景库：每个 set 都只依赖 (g, t, lt, u, spec)，纯函数，可任意顺序求值
 import { rect, px, hline, vline, P, W, H, dither, vgrad } from './px.js';
 import { sky, hills, ground, house, fence, tree, busstop, rain } from './world.js';
 import { actor } from './sprite.js';
@@ -7,17 +7,51 @@ import { actor } from './sprite.js';
 const clampS = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ease = u => 1 - Math.pow(1 - clampS(u, 0, 1), 3);
 
-function rainStreaks(g, t, x0, x1, y0, y1, n, col = '#7fa8cc') {
-  const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+// ── 雨 ──
+// 三层视差：远(短慢暗) / 中 / 近(长快亮)。每滴是一条斜线，落速恒定，接地时溅起小水花。
+const h1 = n => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+
+function rainLayer(g, t, n, len, speed, col, x0, y0, x1, y1, slope = .38, seed = 0) {
+  const w = Math.max(1, x1 - x0), span = Math.max(1, y1 - y0);
   for (let i = 0; i < n; i++) {
-    const x = x0 + ((i * 29) % w);
-    const y = y0 + ((i * 41 + Math.floor(t * 120 + i * 13)) % h);
-    px(g, x, y, col);
-    px(g, x, y + 1, col);
-    px(g, x - 1, y + 2, '#5f86ad');
+    const r1 = h1(i * 3.1 + seed), r2 = h1(i * 7.7 + seed * 2 + 1);
+    const spd = speed * (.8 + r2 * .4);
+    const y = y0 + ((r1 * span + t * spd) % (span + len)) - len;
+    if (y < y0 - len || y > y1) continue;
+    const headX = ((r2 * w + (y - y0) * slope + seed * 13) % w + w) % w + x0;
+    for (let j = 0; j < len; j++) {
+      const yy = Math.round(y) - j;
+      if (yy < y0 || yy > y1) continue;
+      const xx = Math.round(headX - j * slope);
+      if (xx < x0 || xx >= x1) continue;
+      px(g, xx, yy, j === 0 ? '#dceaf8' : col);
+    }
   }
 }
-function puddle(g, x, y, w, t) {
+
+// 雨幕：背景层（画在人和物之前）
+function rainBack(g, t, y1 = 150, q = 1) {
+  rainLayer(g, t, Math.round(64 * q), 3, 54, '#4a6b94', 0, 0, W, y1, .5, 1);
+  rainLayer(g, t, Math.round(34 * q), 6, 110, '#7fa3c8', 0, 0, W, y1, .6, 2);
+}
+// 近景雨：画在人之后，稀、长、亮，制造纵深
+function rainFront(g, t, y1 = 150, q = 1) {
+  rainLayer(g, t, Math.round(14 * q), 8, 200, '#a9c8e4', 0, 0, W, y1, .68, 3);
+}
+// 地面水花：只在接地那一行，2 帧生命，像爆开的小水冠
+function rainSplash(g, t, yLine, n = 14, q = 1) {
+  const frames = Math.floor(t * 12);
+  for (let i = 0; i < n * q; i++) {
+    const r = h1(i * 5.3 + 11), r2 = h1(i * 2.7 + 5);
+    const x = Math.round(r * W);
+    const phase = (frames + i * 3) % 6;
+    if (phase > 1) continue;
+    px(g, x, yLine, '#cfe6f6');
+    px(g, x - 1, yLine - 1, '#9dc0dd');
+    px(g, x + 1, yLine - 1, '#9dc0dd');
+    if (r2 > .7) px(g, x, yLine - 2, '#e8f4ff');
+  }
+}function puddle(g, x, y, w, t) {
   rect(g, x, y, w, 2, P.water);
   rect(g, x + 2, y, w - 4, 1, P.waterLit);
   const r = Math.floor((t * 2) % 3);
@@ -40,7 +74,7 @@ function floorPlanks(g, y0 = 104, col = '#4a3730', dark = '#382821', lit = '#5b4
 }function windowBox(g, x, y, w, h, mode, t) {
   rect(g, x - 3, y - 3, w + 6, h + 6, P.woodDark);
   rect(g, x, y, w, h, mode === 'night' ? '#141c30' : '#2b3f5e');
-  if (mode === 'rain') rainStreaks(g, t, x + 1, x + w - 1, y + 1, y + h - 3, 18);
+  if (mode === 'rain') { rainLayer(g, t, 16, 2, 34, '#4c6b90', x + 1, y + 1, x + w - 1, y + h - 3, .3, 5); rainLayer(g, t, 10, 3, 60, '#88aacb', x + 1, y + 1, x + w - 1, y + h - 3, .34, 6); }
   if (mode === 'night') { px(g, x + 5, y + 6, '#dfe6f2'); px(g, x + 14, y + 12, '#c9d4e6'); }
   vline(g, x + (w >> 1), y, y + h, P.woodDark);
   hline(g, x, x + w, y + (h >> 1), P.woodDark);
@@ -105,6 +139,7 @@ export function rainHouse(g, t, lt, u) {
   hills(g, 78);
   ground(g, 118, H, '#243a2c');
   tree(g, 268, 122, 1.2); tree(g, 42, 120, .9);
+  rainBack(g, t, 150);
   house(g, 96, 84, 92, 50, true, true);
   // 窗里的暖光随呼吸变化
   const k = .82 + .18 * Math.sin(t * 1.6);
@@ -114,7 +149,8 @@ export function rainHouse(g, t, lt, u) {
   }
   rect(g, 138, 112, 10, 20, P.woodDark);
   fence(g, 8, 88, 128);
-  rainStreaks(g, t, 0, W, 0, 150, 90);
+  rainFront(g, t, 150);
+  rainSplash(g, t, 152, 16);
   puddle(g, 60, 150, 26, t); puddle(g, 200, 156, 34, t);
 }
 
@@ -169,6 +205,7 @@ export function busStop(g, t, lt, u, s) {
   if (mode === 'rain') { sky(g, 'night'); } else if (mode === 'night') { sky(g, 'night'); } else { sky(g, 'dusk'); }
   hills(g, 82);
   ground(g, 122);
+  if (mode === 'rain') rainBack(g, t, 150);
   for (const [x, w, h] of [[6, 24, 16], [36, 20, 12], [62, 30, 20], [100, 18, 10]]) {
     rect(g, x, 126 - h, w, h, mode === 'dusk' ? P.cream : '#4a4458');
     for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
@@ -181,14 +218,14 @@ export function busStop(g, t, lt, u, s) {
   busstop(g, 190, 146);
   tree(g, 268, 144, 1.2); tree(g, 24, 146, 1.0);
   const who = (s && s.who) || 'both';
-  if (who === 'none') { if (mode === 'rain') { rainStreaks(g, t, 0, W, 0, 150, 80); puddle(g, 40, 150, 30, t); } return; }
+  if (who === 'none') { if (mode === 'rain') { rainFront(g, t, 150); rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); } return; }
   if (who === 'her') actor(g, 'penny', 150, 118, { dir: 'right', frame: Math.floor(t * 3) });
   else if (who === 'him') actor(g, 'sebastian', 150, 118, { dir: 'left', frame: Math.floor(t * 3) });
   else {
     actor(g, 'sebastian', 132, 118, { dir: 'right', frame: Math.floor(t * 3) });
     actor(g, 'penny', 170, 118, { dir: 'left', frame: Math.floor(t * 3) });
   }
-  if (mode === 'rain') { rainStreaks(g, t, 0, W, 0, 150, 80); puddle(g, 40, 150, 30, t); }
+  if (mode === 'rain') { rainFront(g, t, 150); rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); }
   if (mode === 'night') { px(g, 200, 132, P.lamp); px(g, 200, 133, P.lampLit); }
 }
 
@@ -375,33 +412,39 @@ export function seatEmpty(g, t, lt, u, s) {
 
 // ───────────── 11. 窗（雨） ─────────────
 export function windowRain(g, t, lt, u) {
-  // 墙：竖条纹壁纸
-  rect(g, 0, 0, W, H, '#2a2130');
-  for (let x = 0; x < W; x += 12) vline(g, x, 0, H, '#2f2537');
-  for (let y = 40; y < H; y += 40) hline(g, 0, W, y, '#241c2a');
+  // 墙：竖板 + 一条靠窗的暖光
+  rect(g, 0, 0, W, H, '#241f2e');
+  for (let x = 0; x < W; x += 21) vline(g, x, 0, H, '#2b2536');
+  for (let y = 0; y < H; y += 26) hline(g, 0, W - 1, y, '#221d2c');
   // 窗
-  const wx = 86, wy = 34, ww = 148, wh = 92;
-  rect(g, wx - 6, wy - 6, ww + 12, wh + 12, P.woodDark);
+  const wx = 96, wy = 26, ww = 128, wh = 92;
+  rect(g, wx - 5, wy - 5, ww + 10, wh + 10, P.woodDark);
   rect(g, wx - 3, wy - 3, ww + 6, wh + 6, P.wood);
-  rect(g, wx, wy, ww, wh, '#1a2436');
-  // 窗外：村子剪影 + 雨
+  rect(g, wx, wy, ww, wh, '#16243a');
+  // 窗外：村子剪影 + 一点窗火
   for (let i = 0; i < 6; i++) {
-    const h = 14 + (i % 3) * 10, x = wx + 4 + i * 24;
-    rect(g, x, wy + wh - h - 6, 20, h, '#0f1828');
-    for (let k = 0; k < 3; k++) rect(g, x + 4 + k * 6, wy + wh - h, 3, 4, '#2b3a52');
+    const bx = wx + 4 + i * 21, bh = 10 + (i * 7 % 14);
+    rect(g, bx, wy + wh - 12 - bh, 16, bh + 12, '#101a2c');
+    if (i % 2) rect(g, bx + 5, wy + wh - 14 - bh, 3, 3, '#e8b86a');
   }
-  rainStreaks(g, t, wx + 1, wx + ww - 1, wy + 1, wy + wh - 2, 40, '#9dc0dd');
-  rect(g, wx + 1, wy + wh - 3, ww - 2, 2, '#2c3f58');
+  // 雨：贴在玻璃上，斜、密、短
+  rainLayer(g, t, 30, 2, 30, '#3f5f86', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .4, 11);
+  rainLayer(g, t, 22, 4, 62, '#7fa3c8', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .5, 12);
+  rainLayer(g, t, 8, 7, 120, '#cfe4f6', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .6, 13);
   // 窗棂
-  vline(g, wx + (ww >> 1), wy, wy + wh, P.woodDark);
-  hline(g, wx, wx + ww, wy + (wh >> 1), P.woodDark);
-  rect(g, wx - 8, wy + wh + 6, ww + 16, 4, P.woodLit);
-  // 光：窗下的冷光、桌子暖光
-  dither(g, wx, wy + wh + 10, ww, 24, 'rgba(140,180,220,.16)', 'rgba(0,0,0,0)', 5);
-  rect(g, 214, 118, 2, 40, '#1d1826');
-  rect(g, 206, 112, 18, 7, '#2a2334');
-  rect(g, 208, 114, 14, 4, P.lampLit);
-  dither(g, 186, 118, 60, 46, 'rgba(255,214,150,.18)', 'rgba(0,0,0,0)', 4);
+  vline(g, wx + ww / 2, wy, wy + wh, P.woodDark);
+  hline(g, wx, wx + ww, wy + wh / 2, P.woodDark);
+  rect(g, wx - 7, wy + wh + 3, ww + 14, 4, P.wood);
+  rect(g, wx - 7, wy + wh + 7, ww + 14, 2, P.woodDark);
+  // 玻璃上的水汽：靠边的一圈更暗
+  dither(g, wx, wy, ww, 6, '#0e1a2c', 'rgba(0,0,0,0)', 4);
+  dither(g, wx, wy + wh - 8, ww, 8, '#0e1a2c', 'rgba(0,0,0,0)', 4);
+  // 台灯在玻璃上的暖反光
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * 6.283;
+    px(g, Math.round(wx + 22 + Math.cos(a) * 9), Math.round(wy + wh - 26 + Math.sin(a) * 7), '#8a6a48');
+  }
+  px(g, wx + 22, wy + wh - 26, '#c99a5c');
 }
 // ───────────── 12. 车来了·门开 ─────────────
 export function busArrive(g, t, lt, u, s) {
@@ -410,6 +453,7 @@ export function busArrive(g, t, lt, u, s) {
     rect(g, x, 126 - h, w, h, '#4a4458');
     for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? '#5b5468' : '#3f3a4c');
   }
+  rainBack(g, t, 150);
   rect(g, 0, 144, W, 22, P.pathDark);
   rect(g, 0, 146, W, 18, P.path);
   for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 154, '#cfe0f0');
@@ -422,16 +466,17 @@ export function busArrive(g, t, lt, u, s) {
     // 车灯扫过站台
     if (p > .5) { const a = clampS((p - .5) * 2, 0, 1); dither(g, 0, 146, 176, 18, 'rgba(255,224,150,' + (.22 * a).toFixed(2) + ')', 'rgba(0,0,0,0)', 5); }
   }
-  rainStreaks(g, t, 0, W, 0, 150, 60);
+  rainFront(g, t, 150); rainSplash(g, t, 150, 12);
 }
 
 // ───────────── 13. 片名卡 ─────────────
 export function endCard(g, t, lt, u) {
   sky(g, 'night'); hills(g, 86); ground(g, 122, H, '#1e2f28');
+  rainBack(g, t, 150, 1.2);
   for (let i = 0; i < 3; i++) rect(g, 20 + i * 34, 100 - i * 4, 28, 22 + i * 4, '#232a3d');
   busstop(g, 250, 146);
   tree(g, 40, 144, 1.3);
-  rainStreaks(g, t, 0, W, 0, 150, 70);
+  rainFront(g, t, 150, 1.3); rainSplash(g, t, 150, 18);
   puddle(g, 120, 156, 60, t);
   dither(g, 0, 0, W, H, 'rgba(8,10,20,.3)', 'rgba(0,0,0,0)', 12);
 }
