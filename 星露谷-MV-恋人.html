@@ -5,19 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>恋人 · 星露谷风格 MV</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #141019; overflow: hidden; }
+  html, body { margin: 0; height: 100%; background: #101018; overflow: hidden; }
   body { display: grid; place-items: center; }
   canvas { image-rendering: pixelated; display: block; max-width: 100vw; max-height: 100vh; }
+  .lag { position: fixed; bottom: 10px; width: 100%; text-align: center; color: #7d7488;
+         font: 12px/1.6 "Microsoft YaHei", sans-serif; letter-spacing: .06em; }
 </style>
 </head>
 <body>
+<div class="lag">整片 4 分 36 秒 · 无声预览（歌曲版权不在本仓）· 声音版见 sample 或自行对齐音轨</div>
 <script type="module">
-/* ──────────────────────────────────────────────────────────────
-   恋人（李荣浩）· 星露谷风格 MV —— 单文件预览
-   320×180 原生像素 → 6 倍放大到 1920×1080，24 fps
-   角色行走图取自游戏本体（.xnb 解包），base64 内嵌在本文件里
-   ?frame=sample|farm|stop|room|cast  可切换画面
-   ────────────────────────────────────────────────────────────── */
+// ===== px.js =====
 // 星露谷风格像素画：320×180 原生，6 倍最近邻放大到 1920×1080
 // 调色板 ≤ 30 色；所有形状都对齐到像素格；渐变靠抖动，不靠插值。
 
@@ -108,6 +106,7 @@ function text(g, str, x, y, col, size = 12, align = 'left') {
 }
 
 
+// ===== world.js =====
 ﻿// 场景：农舍黄昏、巴士站、雨中空屋 —— 星露谷风格的 3/4 俯视
 
 // —— 天空 ——
@@ -168,10 +167,11 @@ function ground(g, y0 = 128, y1 = H, base = P.grass) {
 }
 
 // —— 房子 ——
-function house(g, x, y, w = 92, h = 54, lit = true) {
+function house(g, x, y, w = 92, h = 54, lit = true, night = false) {
+  const WALL = night ? '#6a6276' : P.cream, LINE = night ? '#5b5468' : P.dress;
   // 墙
-  rect(g, x, y, w, h, P.cream);
-  for (let yy = y; yy < y + h; yy += 5) hline(g, x, x + w - 1, yy, P.dress);
+  rect(g, x, y, w, h, WALL);
+  for (let yy = y; yy < y + h; yy += 5) hline(g, x, x + w - 1, yy, LINE);
   // 屋顶
   for (let i = 0; i < 18; i++) {
     const ww = w + 10 - i * 2;
@@ -253,6 +253,7 @@ function box(g, x, y, w, h) {
 }
 
 
+// ===== sprite.js =====
 ﻿// 游戏原版行走图（从 .xnb 解出的 64×N 表，每格 16×32）
 // 行：0 下 / 1 右 / 2 上 / 3 左；再往后是坐、看书、打伞等特殊动作
 const SHEETS = {
@@ -284,34 +285,651 @@ function actor(g, who, x, y, o = {}) {
 
 const ROW = { sit: 6 };
 
-﻿// 星露谷风格 · 试片：?frame=farm|stop|room|cast&raw=1
+// ===== sets.js =====
+﻿// 场景库：每个 set 都只依赖 (g, t, lt, u, spec)，纯函数，可任意顺序求值
+
+
+
+// ───────────── 通用零件 ─────────────
+const clampS = (v, a, b) => (v < a ? a : v > b ? b : v);
+const ease = u => 1 - Math.pow(1 - clampS(u, 0, 1), 3);
+
+function rainStreaks(g, t, x0, x1, y0, y1, n, col = '#7fa8cc') {
+  const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+  for (let i = 0; i < n; i++) {
+    const x = x0 + ((i * 29) % w);
+    const y = y0 + ((i * 41 + Math.floor(t * 120 + i * 13)) % h);
+    px(g, x, y, col);
+    px(g, x, y + 1, col);
+    px(g, x - 1, y + 2, '#5f86ad');
+  }
+}
+function puddle(g, x, y, w, t) {
+  rect(g, x, y, w, 2, P.water);
+  rect(g, x + 2, y, w - 4, 1, P.waterLit);
+  const r = Math.floor((t * 2) % 3);
+  hline(g, x + 4 + r * 3, x + 9 + r * 3, y + 1, P.foam);
+}
+function wall(g, top = 0, bot = 104, dark = false) {
+  rect(g, 0, top, W, bot - top, dark ? '#241d2b' : '#3a2d38');
+  for (let y = top + 8; y < bot; y += 12) hline(g, 0, W - 1, y, dark ? '#2a2231' : '#42333f');
+  for (let x = 6; x < W; x += 26) vline(g, x, top, bot, dark ? '#2a2231' : '#42333f');
+}
+function floorPlanks(g, y0 = 104, col = '#4a3730', dark = '#382821', lit = '#5b443a') {
+  rect(g, 0, y0, W, H - y0, col);
+  let row = 0;
+  for (let y = y0; y < H; y += 16, row++) {
+    hline(g, 0, W - 1, y, lit);
+    hline(g, 0, W - 1, y + 1, dark);
+    if (row % 3 === 1) for (let x = (row % 2) * 120; x < W; x += 240) vline(g, x, y + 2, y + 15, dark);
+  }
+  rect(g, 0, y0, W, 1, lit);
+}function windowBox(g, x, y, w, h, mode, t) {
+  rect(g, x - 3, y - 3, w + 6, h + 6, P.woodDark);
+  rect(g, x, y, w, h, mode === 'night' ? '#141c30' : '#2b3f5e');
+  if (mode === 'rain') rainStreaks(g, t, x + 1, x + w - 1, y + 1, y + h - 3, 18);
+  if (mode === 'night') { px(g, x + 5, y + 6, '#dfe6f2'); px(g, x + 14, y + 12, '#c9d4e6'); }
+  vline(g, x + (w >> 1), y, y + h, P.woodDark);
+  hline(g, x, x + w, y + (h >> 1), P.woodDark);
+  rect(g, x - 5, y + h + 3, w + 10, 3, P.wood);
+}
+function deck(g, x, y, on) {
+  // 录音机：底座 + 两个带盘 + 按钮
+  rect(g, x, y, 54, 20, '#2f2b38');
+  rect(g, x, y, 54, 2, '#4a4457');
+  rect(g, x + 3, y + 4, 19, 12, '#15121c');
+  rect(g, x + 32, y + 4, 19, 12, '#15121c');
+  for (const cx of [x + 12, x + 41]) {
+    rect(g, cx - 6, y + 5, 12, 10, '#241f2e');
+    rect(g, cx - 4, y + 7, 8, 6, '#3b3450');
+    px(g, cx - 1, y + 9, on ? P.lamp : '#5a5470');
+    if (on) { px(g, cx + 1, y + 7, '#6b6485'); px(g, cx - 2, y + 12, '#6b6485'); }
+  }
+  rect(g, x + 24, y + 6, 4, 10, '#3d3749');
+  for (let i = 0; i < 4; i++) rect(g, x + 5 + i * 6, y + 17, 4, 2, i === 1 && on ? P.lamp : '#565068');
+  rect(g, x + 40, y + 17, 9, 2, '#565068');
+}
+function cassette(g, x, y, s = 1, label = true) {
+  const w = 44 * s, h = 28 * s;
+  rect(g, x, y, w, h, '#33303c');
+  rect(g, x + 1 * s, y + 1 * s, w - 2 * s, h - 2 * s, '#474354');
+  rect(g, x + 3 * s, y + 3 * s, w - 6 * s, 12 * s, P.cream);
+  rect(g, x + 4 * s, y + 4 * s, w - 8 * s, 1 * s, '#d8c69e');
+  rect(g, x + 4 * s, y + 15 * s, w - 8 * s, 8 * s, '#15131c');
+  for (const cx of [x + 13 * s, x + 31 * s]) {
+    rect(g, cx - 4 * s, y + 16 * s, 8 * s, 6 * s, '#3b3848');
+    px(g, cx - 1 * s, y + 18 * s, '#8d879b');
+  }
+  hline(g, x + 5 * s, x + w - 5 * s, y + 14 * s, '#2a2734');
+  if (label) { rect(g, x + 6 * s, y + 5 * s, 14 * s, 1 * s, '#c9584f'); rect(g, x + 6 * s, y + 8 * s, 20 * s, 1 * s, '#8d8272'); }
+}
+function bowl(g, x, y, rice = true) {
+  rect(g, x, y, 18, 3, P.cream);
+  rect(g, x + 1, y + 3, 16, 5, '#e6d4ae');
+  rect(g, x + 2, y + 8, 14, 2, '#cbb894');
+  if (rice) { rect(g, x + 3, y + 1, 12, 2, '#fff6e4'); }
+}
+function greens(g, x, y, n = 6) { for (let i = 0; i < n; i++) { px(g, x + (i * 3) % 11, y - (i % 3), '#5f8f3e'); px(g, x + (i * 3) % 11 + 1, y - (i % 3), '#7fae52'); } }
+function chair(g, x, y, col = P.wood) {
+  rect(g, x, y - 16, 3, 22, col); rect(g, x + 16, y - 16, 3, 22, col);
+  rect(g, x, y - 18, 20, 3, P.woodLit);
+  rect(g, x, y - 1, 20, 3, col); rect(g, x + 2, y + 2, 2, 8, P.woodDark); rect(g, x + 16, y + 2, 2, 8, P.woodDark);
+}
+function cup(g, x, y) {
+  rect(g, x, y, 7, 6, P.cream); rect(g, x + 1, y - 1, 5, 1, P.white);
+  rect(g, x + 7, y + 1, 2, 3, P.cream);
+}
+function glow(g, x, y, r, col) {
+  for (let i = r; i > 0; i--) {
+    const a = i / r;
+    if (a > .66) dither(g, x - i, y - i, i * 2, i * 2, col, 'rgba(0,0,0,0)', 4);
+  }
+}
+
+// ───────────── 1. 雨夜空屋外景 ─────────────
+function rainHouse(g, t, lt, u) {
+  sky(g, 'night');
+  hills(g, 78);
+  ground(g, 118, H, '#243a2c');
+  tree(g, 268, 122, 1.2); tree(g, 42, 120, .9);
+  house(g, 96, 84, 92, 50, true, true);
+  // 窗里的暖光随呼吸变化
+  const k = .82 + .18 * Math.sin(t * 1.6);
+  for (const wx of [112, 158]) {
+    rect(g, wx, 104, 9, 8, P.lampLit);
+    rect(g, wx + 1, 105, 7, 6, k > .9 ? '#ffd9a0' : '#ffe9c0');
+  }
+  rect(g, 138, 112, 10, 20, P.woodDark);
+  fence(g, 8, 88, 128);
+  rainStreaks(g, t, 0, W, 0, 150, 90);
+  puddle(g, 60, 150, 26, t); puddle(g, 200, 156, 34, t);
+}
+
+// ───────────── 2. 屋内·夜（录音机在桌上） ─────────────
+function roomNight(g, t, lt, u, s) {
+  wall(g, 0, 104, true);
+  floorPlanks(g, 104);
+  windowBox(g, 36, 30, 52, 40, 'rain', t);
+  // 台灯
+  rect(g, 214, 62, 3, 42, '#1d1826');
+  rect(g, 206, 56, 18, 7, '#2a2334');
+  rect(g, 208, 58, 14, 4, P.lampLit);
+  for (let i = 0; i < 26; i++) { const a = i / 26 * 6.283; px(g, Math.round(215 + Math.cos(a) * 22), Math.round(66 + Math.sin(a) * 16), '#8a6a48'); }
+  // 桌子
+  rect(g, 150, 96, 104, 6, P.woodLit);
+  rect(g, 150, 102, 104, 20, P.wood);
+  rect(g, 150, 120, 104, 3, P.woodDark);
+  rect(g, 156, 122, 4, 16, P.woodDark); rect(g, 244, 122, 4, 16, P.woodDark);
+  deck(g, 176, 78, true);
+  cassette(g, 236, 82, .55);
+  if (s && s.actor !== false) actor(g, 'sebastian', 120, 96, { dir: 'right', frame: Math.floor(t * 4) });
+  chair(g, 96, 118, P.wood);
+  rect(g, 0, 104, W, 2, '#1b1622');
+}
+
+// ───────────── 3. 磁带特写（放在录音机上） ─────────────
+function tapeBig(g, t, lt, u) {
+  rect(g, 0, 0, W, H, '#1b1725');
+  for (let y = 0; y < H; y += 6) hline(g, 0, W - 1, y, '#221d2c');
+  rect(g, 56, 40, 208, 96, '#2a2436');
+  rect(g, 56, 40, 208, 3, '#3b3450');
+  // 机器上的两个带盘
+  for (const cx of [104, 216]) {
+    rect(g, cx - 26, 54, 52, 40, '#171319');
+    rect(g, cx - 22, 57, 44, 34, '#241f2e');
+    const a = t * 1.2;
+    for (let i = 0; i < 6; i++) {
+      const th = a + i * Math.PI / 3;
+      px(g, Math.round(cx + Math.cos(th) * 13), Math.round(74 + Math.sin(th) * 10), '#6b6485');
+    }
+    rect(g, cx - 5, 69, 10, 10, '#3b3450');
+  }
+  cassette(g, 120, 100, 1.55);
+  // 角落里的手电光
+  dither(g, 0, 0, W, 26, '#0e0b14', 'rgba(0,0,0,0)', 5);
+  dither(g, 0, 152, W, 28, '#0e0b14', 'rgba(0,0,0,0)', 12);
+}
+
+// ───────────── 4. 公交站（那年·雨 / 黄昏 / 现在·夜） ─────────────
+function busStop(g, t, lt, u, s) {
+  const mode = (s && s.mode) || 'dusk';
+  if (mode === 'rain') { sky(g, 'night'); } else if (mode === 'night') { sky(g, 'night'); } else { sky(g, 'dusk'); }
+  hills(g, 82);
+  ground(g, 122);
+  for (const [x, w, h] of [[6, 24, 16], [36, 20, 12], [62, 30, 20], [100, 18, 10]]) {
+    rect(g, x, 126 - h, w, h, mode === 'dusk' ? P.cream : '#4a4458');
+    for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
+    if (mode === 'dusk') for (let wx = x + 4; wx < x + w - 4; wx += 9) rect(g, wx, 126 - h + 5, 4, 4, P.lampLit);
+    else for (let wx = x + 4; wx < x + w - 4; wx += 9) rect(g, wx, 126 - h + 5, 4, 4, '#2b2a3c');
+  }
+  rect(g, 0, 144, W, 22, P.pathDark);
+  rect(g, 0, 146, W, 18, P.path);
+  for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 154, P.cream);
+  busstop(g, 190, 146);
+  tree(g, 268, 144, 1.2); tree(g, 24, 146, 1.0);
+  const who = (s && s.who) || 'both';
+  if (who === 'none') { if (mode === 'rain') { rainStreaks(g, t, 0, W, 0, 150, 80); puddle(g, 40, 150, 30, t); } return; }
+  if (who === 'her') actor(g, 'penny', 150, 118, { dir: 'right', frame: Math.floor(t * 3) });
+  else if (who === 'him') actor(g, 'sebastian', 150, 118, { dir: 'left', frame: Math.floor(t * 3) });
+  else {
+    actor(g, 'sebastian', 132, 118, { dir: 'right', frame: Math.floor(t * 3) });
+    actor(g, 'penny', 170, 118, { dir: 'left', frame: Math.floor(t * 3) });
+  }
+  if (mode === 'rain') { rainStreaks(g, t, 0, W, 0, 150, 80); puddle(g, 40, 150, 30, t); }
+  if (mode === 'night') { px(g, 200, 132, P.lamp); px(g, 200, 133, P.lampLit); }
+}
+
+// ───────────── 5. 公路·公交驶过 ─────────────
+function roadBus(g, t, lt, u, s) {
+  sky(g, 'dusk'); hills(g, 80); ground(g, 120);
+  for (const [x, w, h] of [[10, 26, 18], [48, 22, 14], [86, 30, 22]]) {
+    rect(g, x, 124 - h, w, h, P.cream);
+    for (let i = 0; i < 9; i++) rect(g, x - 4 + i, 124 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
+  }
+  rect(g, 0, 138, W, 26, P.pathDark);
+  rect(g, 0, 142, W, 20, P.path);
+  for (let i = 0; i < 6; i++) hline(g, 8 + i * 56, 40 + i * 56, 152, P.cream);
+  tree(g, 300, 140, 1.1);
+  const bx = -60 + ((lt * 66) % 420);
+  busSide(g, bx, 168, false);
+}
+
+function busSide(g, x, yb, door) {
+  const b = '#3f5480', bd = '#26314e', win = '#f4dfae', wheel = '#1b1522';
+  rect(g, x, yb - 40, 104, 40, b);
+  rect(g, x, yb - 40, 104, 4, '#5a71a4');
+  rect(g, x, yb - 9, 104, 9, bd);
+  for (let i = 0; i < 4; i++) rect(g, x + 22 + i * 21, yb - 34, 16, 14, win);
+  rect(g, x + 3, yb - 34, 13, 14, win);
+  rect(g, x + 3, yb - 34, 13, 7, '#cfe0f0');
+  rect(g, x + 17, yb - 6, 16, 8, wheel); rect(g, x + 71, yb - 6, 16, 8, wheel);
+  rect(g, x + 21, yb - 4, 8, 4, '#5c5c6c'); rect(g, x + 75, yb - 4, 8, 4, '#5c5c6c');
+  rect(g, x + 1, yb - 22, 3, 6, '#ffe9a8');
+  rect(g, x + 4, yb - 46, 34, 6, P.cream);
+  rect(g, x + 6, yb - 45, 30, 4, '#2b3550');
+  if (door) { rect(g, x + 18, yb - 34, 10, 26, '#10151f'); rect(g, x + 22, yb - 32, 1, 22, '#3f5480'); }
+}
+
+// ───────────── 6. 河堤 / 木栈桥 ─────────────
+function riverBands(g, t, dusk = true) {
+  sky(g, dusk ? 'dusk' : 'night');
+  hills(g, 76);
+  // 远岸
+  rect(g, 0, 86, W, 10, dusk ? '#3a4a62' : '#232c42');
+  // 水面（远深近浅）
+  rect(g, 0, 96, W, 20, P.waterDark);
+  dither(g, 0, 96, W, 20, '#2f5b62', P.waterDark, 8);
+  for (let i = 0; i < 16; i++) {
+    const y = 98 + ((i % 5) * 3.4 | 0), x = ((i * 53 + Math.floor(t * 6)) % W);
+    hline(g, x, x + 4 + (i % 3) * 3, y, i % 4 ? P.waterLit : P.foam);
+  }
+  // 栈桥：桥面在上，木桩插进水里
+  rect(g, 0, 116, W, 2, P.woodLit);
+  rect(g, 0, 118, W, 8, P.wood);
+  for (let x = 3; x < W; x += 15) vline(g, x, 116, 125, P.woodDark);
+  rect(g, 0, 126, W, 12, '#1d1a1e');
+  for (let x = 9; x < W; x += 44) { rect(g, x, 125, 3, 9, P.woodDark); px(g, x + 1, 134, P.wood); }
+  ground(g, 138, H, '#2f4a34');
+}export function river(g, t, lt, u, s) {
+  riverBands(g, t, true);
+  tree(g, 30, 138, 1.1); tree(g, 288, 136, 1.2);
+  const walk = (s && s.walk) !== false;
+  const off = walk ? Math.round(u * 26) : 0;
+  actor(g, 'sebastian', 92 + off, 84, { dir: 'right', frame: Math.floor(t * 6) });
+  actor(g, 'penny', 112 + off, 84, { dir: 'right', frame: Math.floor(t * 6) + 2 });
+  rect(g, 92 + off, 116, 14, 1, '#2b2420'); rect(g, 112 + off, 116, 14, 1, '#2b2420');
+  if (s && s.single) { /* 一个人 */ }
+}
+// ───────────── 7. 饭桌（两人 / 一人） ─────────────
+function tableFood(g, t, lt, u, s) {
+  const alone = !!(s && s.alone);
+  // 墙 0..78，地板 78..180
+  rect(g, 0, 0, W, 70, alone ? '#1c2130' : '#3a2330');
+  for (let x = 0; x < W; x += 26) vline(g, x, 0, 70, alone ? '#222839' : '#452b3a');
+  rect(g, 0, 66, W, 4, alone ? '#141a26' : '#2a1a24');
+  floorPlanks(g, 70, alone ? '#5a4436' : '#6b5040', '#3f2c22', alone ? '#6b5242' : '#7d6250');
+  windowBox(g, alone ? 208 : 22, 12, 60, 40, alone ? 'rain' : 'dusk', t);
+  // 桌子：桌面 y=96，腿到 150
+  const ty = 92;
+  rect(g, 54, ty, 212, 6, P.woodLit);
+  rect(g, 54, ty + 6, 212, 3, P.wood);
+  rect(g, 54, ty + 9, 212, 2, P.woodDark);
+  rect(g, 64, ty + 11, 4, 42, P.woodDark); rect(g, 252, ty + 11, 4, 42, P.woodDark);
+  // 桌上
+  if (alone) { bowl(g, 116, ty - 10); cup(g, 150, ty - 8); greens(g, 132, ty - 8, 5); }
+  else { bowl(g, 92, ty - 10); bowl(g, 150, ty - 10); greens(g, 122, ty - 8, 7); cup(g, 176, ty - 8); }
+  // 人：坐在桌后，脚被桌子挡住
+  if (alone) actor(g, 'sebastian', 74, 60, { dir: 'right', frame: 0 });
+  else {
+    actor(g, 'sebastian', 80, 60, { dir: 'right', frame: 0 });
+    actor(g, 'penny', 208, 60, { dir: 'left', frame: 0 });
+  }
+  if (alone) dither(g, 0, 0, W, H, 'rgba(18,22,34,.4)', 'rgba(0,0,0,0)', 10);
+}
+
+// ───────────── 8. 鞋（门槛特写） ─────────────
+function bigShoe(g, x, y, kind) {
+  const red = kind === 'red';
+  const up = red ? P.herShoe : P.boot;
+  const hi = red ? '#e0564c' : P.bootLit;
+  const lo = red ? '#8f2f2a' : '#2a1a12';
+  const sole = red ? P.cream : '#3b2a1e';
+  // 鞋身（脚尖朝右，逐行收边）
+  const rows = [
+    [0, 40, 54], [2, 34, 60], [4, 30, 64], [6, 28, 68], [8, 27, 70],
+    [10, 26, 70], [12, 26, 70], [14, 26, 70],
+  ];
+  rows.forEach(([dy, x0, x1]) => rect(g, x + x0, y - 24 + dy, x1 - x0, 2, up));
+  rect(g, x + 26, y - 24, 30, 3, hi);
+  // 后跟
+  rect(g, x + 26, y - 24, 8, 22, lo);
+  rect(g, x + 26, y - 24, 3, 20, up);
+  // 鞋舌 + 鞋带
+  rect(g, x + 40, y - 22, 8, 8, lo);
+  for (let i = 0; i < 4; i++) rect(g, x + 38 + i * 6, y - 20 + i * 3, 5, 2, red ? '#fff6e4' : '#8a6a4a');
+  // 白底 + 大底
+  rect(g, x + 24, y - 2, 48, 4, sole);
+  rect(g, x + 24, y + 2, 48, 2, '#d8ccb0');
+  rect(g, x + 22, y + 4, 52, 2, '#120d14');
+  // 鞋头包边
+  rect(g, x + 66, y - 8, 4, 7, sole);
+  if (red) {
+    // 双结：两根带子
+    rect(g, x + 30, y - 28, 10, 4, '#e8dcc4');
+    rect(g, x + 36, y - 31, 8, 3, '#e8dcc4');
+    px(g, x + 44, y - 32, '#e8dcc4'); px(g, x + 28, y - 29, '#e8dcc4');
+  }
+}
+function shoes(g, t, lt, u, s) {
+  const pair = (s && s.pair) !== false;
+  rect(g, 0, 0, W, 100, '#232a3a');
+  rect(g, 0, 94, W, 6, '#39405a');
+  floorPlanks(g, 100, '#5a4436', '#3a2a22', '#6b5242');
+  const baseY = 140;
+  rect(g, 40, baseY + 3, 80, 4, '#2f2118');
+  bigShoe(g, 36, baseY, 'red');
+  if (pair) { rect(g, 128, baseY + 3, 80, 4, '#2f2118'); bigShoe(g, 124, baseY, 'brown'); }
+  if (s && s.untie) {
+    rect(g, 88, 104, 18, 12, P.skin);
+    rect(g, 96, 112, 6, 16, P.skinDark);
+    hline(g, 74, 108, 118, '#e8dcc4');
+    px(g, 106, 119, '#e8dcc4');
+  }
+  dither(g, 0, 0, W, 22, 'rgba(12,10,18,.45)', 'rgba(0,0,0,0)', 6);
+}
+// ───────────── 9. 卡带 / 倒带特写 ─────────────
+function deckJam(g, t, lt, u, s) {
+  rect(g, 0, 0, W, H, '#1a1622');
+  for (let y = 0; y < H; y += 5) hline(g, 0, W - 1, y, '#221c2a');
+  rect(g, 40, 34, 240, 108, '#292333');
+  rect(g, 40, 34, 240, 3, '#3b3450');
+  for (const cx of [104, 216]) {
+    rect(g, cx - 28, 48, 56, 44, '#15111a');
+    rect(g, cx - 24, 51, 48, 38, '#221d2b');
+    const a = -t * (s && s.jam ? 2.4 : .5);
+    for (let i = 0; i < 8; i++) {
+      const th = a + i * Math.PI / 4;
+      px(g, Math.round(cx + Math.cos(th) * 15), Math.round(70 + Math.sin(th) * 12), '#7a7390');
+    }
+    rect(g, cx - 6, 64, 12, 12, '#3b3450');
+    rect(g, cx - 2, 68, 4, 4, '#8d879b');
+  }
+  // 磁带被吐出 / 拉出的一截
+  cassette(g, 128, 96, 1.2);
+  const spill = s && s.spill != null ? s.spill : .5;
+  const len = Math.round(70 * spill);
+  for (let i = 0; i < len; i++) {
+    const y = 112 + Math.round(Math.sin(i / 9 + t * 2) * 5) + Math.round(i / 14);
+    px(g, 150 + i, y, i % 3 ? '#2a2634' : '#4a4458');
+  }
+  dither(g, 0, 0, W, 22, '#0e0b14', 'rgba(0,0,0,0)', 5);
+}
+
+// ───────────── 10. 空屋·空椅（两只杯子） ─────────────
+function seatEmpty(g, t, lt, u, s) {
+  wall(g, 0, 104, true);
+  floorPlanks(g, 104);
+  windowBox(g, 40, 26, 56, 42, 'rain', t);
+  rect(g, 150, 96, 104, 6, P.woodLit);
+  rect(g, 150, 102, 104, 18, P.wood);
+  rect(g, 150, 120, 104, 3, P.woodDark);
+  cup(g, 164, 88); cup(g, 190, 88);
+  chair(g, 214, 118, P.wood);
+  if (s && s.actor) actor(g, 'sebastian', 120, 96, { dir: 'right', frame: 0 });
+  // 夜里的一点点光
+  dither(g, 0, 0, W, H, 'rgba(14,16,30,.38)', 'rgba(0,0,0,0)', 12);
+}
+
+// ───────────── 11. 窗（雨） ─────────────
+function windowRain(g, t, lt, u) {
+  // 墙：竖条纹壁纸
+  rect(g, 0, 0, W, H, '#2a2130');
+  for (let x = 0; x < W; x += 12) vline(g, x, 0, H, '#2f2537');
+  for (let y = 40; y < H; y += 40) hline(g, 0, W, y, '#241c2a');
+  // 窗
+  const wx = 86, wy = 34, ww = 148, wh = 92;
+  rect(g, wx - 6, wy - 6, ww + 12, wh + 12, P.woodDark);
+  rect(g, wx - 3, wy - 3, ww + 6, wh + 6, P.wood);
+  rect(g, wx, wy, ww, wh, '#1a2436');
+  // 窗外：村子剪影 + 雨
+  for (let i = 0; i < 6; i++) {
+    const h = 14 + (i % 3) * 10, x = wx + 4 + i * 24;
+    rect(g, x, wy + wh - h - 6, 20, h, '#0f1828');
+    for (let k = 0; k < 3; k++) rect(g, x + 4 + k * 6, wy + wh - h, 3, 4, '#2b3a52');
+  }
+  rainStreaks(g, t, wx + 1, wx + ww - 1, wy + 1, wy + wh - 2, 40, '#9dc0dd');
+  rect(g, wx + 1, wy + wh - 3, ww - 2, 2, '#2c3f58');
+  // 窗棂
+  vline(g, wx + (ww >> 1), wy, wy + wh, P.woodDark);
+  hline(g, wx, wx + ww, wy + (wh >> 1), P.woodDark);
+  rect(g, wx - 8, wy + wh + 6, ww + 16, 4, P.woodLit);
+  // 光：窗下的冷光、桌子暖光
+  dither(g, wx, wy + wh + 10, ww, 24, 'rgba(140,180,220,.16)', 'rgba(0,0,0,0)', 5);
+  rect(g, 214, 118, 2, 40, '#1d1826');
+  rect(g, 206, 112, 18, 7, '#2a2334');
+  rect(g, 208, 114, 14, 4, P.lampLit);
+  dither(g, 186, 118, 60, 46, 'rgba(255,214,150,.18)', 'rgba(0,0,0,0)', 4);
+}
+// ───────────── 12. 车来了·门开 ─────────────
+function busArrive(g, t, lt, u, s) {
+  sky(g, 'night'); hills(g, 82); ground(g, 122);
+  for (const [x, w, h] of [[6, 24, 16], [36, 20, 12], [62, 30, 20]]) {
+    rect(g, x, 126 - h, w, h, '#4a4458');
+    for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? '#5b5468' : '#3f3a4c');
+  }
+  rect(g, 0, 144, W, 22, P.pathDark);
+  rect(g, 0, 146, W, 18, P.path);
+  for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 154, '#cfe0f0');
+  busstop(g, 96, 146);
+  actor(g, 'sebastian', 120, 118, { dir: 'left', frame: 0 });
+  const p = clampS((lt - .3) / 1.6, 0, 1);
+  const bx = 330 - (330 - 176) * ease(p);
+  if (lt > .3) {
+    busSide(g, bx, 168, p > .92);
+    // 车灯扫过站台
+    if (p > .5) { const a = clampS((p - .5) * 2, 0, 1); dither(g, 0, 146, 176, 18, 'rgba(255,224,150,' + (.22 * a).toFixed(2) + ')', 'rgba(0,0,0,0)', 5); }
+  }
+  rainStreaks(g, t, 0, W, 0, 150, 60);
+}
+
+// ───────────── 13. 片名卡 ─────────────
+function endCard(g, t, lt, u) {
+  sky(g, 'night'); hills(g, 86); ground(g, 122, H, '#1e2f28');
+  for (let i = 0; i < 3; i++) rect(g, 20 + i * 34, 100 - i * 4, 28, 22 + i * 4, '#232a3d');
+  busstop(g, 250, 146);
+  tree(g, 40, 144, 1.3);
+  rainStreaks(g, t, 0, W, 0, 150, 70);
+  puddle(g, 120, 156, 60, t);
+  dither(g, 0, 0, W, H, 'rgba(8,10,20,.3)', 'rgba(0,0,0,0)', 12);
+}
+
+// ───────────── 14. 河堤黄昏·只站着 ─────────────
+function riverStand(g, t, lt, u, s) {
+  riverBands(g, t, true);
+  tree(g, 288, 136, 1.2);
+  actor(g, 'sebastian', 104, 84, { dir: 'right', frame: 0 });
+  actor(g, 'penny', 136, 84, { dir: 'left', frame: 0 });
+  rect(g, 104, 116, 14, 1, '#2b2420'); rect(g, 136, 116, 14, 1, '#2b2420');
+}
+const SETS = {
+  rainHouse, roomNight, tapeBig, busStop, roadBus, river, tableFood,
+  shoes, deckJam, seatEmpty, windowRain, busArrive, endCard, riverStand,
+};
+
+
+// ===== scenes.js =====
+﻿// 分镜表：整首歌 0 → 275.9 秒，切成一串镜头
+// 每个镜头 = { t0, t1, set, args, cam, line?, panelAt? }
+// cam = { x, y, z0, z1 }（世界格坐标；z 是推近倍率）
+
+// 36 句歌词：与 `恋人-李荣浩.lrc` 的 36 个时间戳一一对应
+const LINES = [
+  '那年夏天的雨，好像下不完。',
+  '我在公交站，第一次看见她。',
+  '她抱着一只纸袋，鞋带松了。',
+  '我说，你的鞋带开了。',
+  '她低头，笑了一下。',
+  '那以后的每个黄昏，我们坐同一班车。',
+  '河堤的木栈道上，影子比人长。',
+  '她把红鞋子挂在栏杆上，说这样凉快。',
+  '雨落进河里，一圈一圈。',
+  '我住的那间屋子，窗户朝西。',
+  '她把磁带塞进录音机，说倒着录的。',
+  '按下录音键，只有雨声。',
+  '晚饭是白饭和青菜，她挑掉葱。',
+  '她说她八月要走，很久以前就想好的。',
+  '我没问为什么，也没问去哪里。',
+  '那天她穿了红色的鞋子。',
+  '我把鞋带解开，又系上。',
+  '别解开，她说，系紧一点。',
+  '雨在窗外下了整夜。',
+  '天亮的时候，雨小了一点。',
+  '我们去了河边，谁都没说话。',
+  '她说，你要记得那条路。',
+  '我说，我记得。',
+  '八月的最后一天，车来了。',
+  '她把鞋带解开，递给我。',
+  '车只停三分钟。',
+  '她上车，没有回头。',
+  '我在原地站到车灯看不见。',
+  '后来的每个夏天，雨都下得像那天。',
+  '我搬到河边，房间朝西。',
+  '录音机还在，磁带还在。',
+  '我按下 PLAY，里面只有雨声。',
+  '我听了很久，很久。',
+  '那盘磁带，我没有再擦掉。',
+  '如果能倒回去，我还会说那句话。',
+  '那年夏天，我把磁带留在了录音机里。',
+];
+
+// LRC 时间戳（秒）
+const STAMPS = [
+  26.02, 33.37, 38.40, 46.91, 50.75, 53.97, 58.27, 61.04, 65.06,
+  67.86, 74.36, 81.02, 87.97, 91.48, 121.56, 129.26, 132.65, 137.01,
+  140.49, 142.62, 147.20, 149.82, 155.86, 163.23, 170.02, 173.70,
+  178.72, 185.51, 192.74, 199.08, 202.44, 205.78, 211.21, 218.50,
+  224.81, 228.39,
+];
+const TOTAL = 275.925;
+
+// 镜头语言：句内慢推，句间换景
+const CAM = {
+  wide:   { x: 140, y: 104, z0: 1.00, z1: 1.06 },
+  push:   { x: 150, y: 100, z0: 1.02, z1: 1.12 },
+  close:  { x: 150, y: 92,  z0: 1.05, z1: 1.14 },
+  tight:  { x: 150, y: 100, z0: 1.45, z1: 1.58 },
+  left:   { x: 96,  y: 104, z0: 1.04, z1: 1.12 },
+  drift:  { x: 180, y: 96,  z0: 1.26, z1: 1.14 },
+  foot:   { x: 112, y: 106, z0: 1.05, z1: 1.14 },
+};
+
+// 36 个主镜头（顺序对应 36 句）
+const MAIN = [
+  ['busStop',   { mode: 'rain', who: 'none' }, CAM.wide],     // 1 那年夏天的雨
+  ['busStop',   { mode: 'dusk', who: 'her'  }, CAM.push],     // 2 第一次看见她
+  ['busStop',   { mode: 'dusk', who: 'both' }, CAM.left],     // 3 纸袋 / 鞋带
+  ['shoes',     { pair: true },                CAM.foot],     // 4 鞋带开了
+  ['busStop',   { mode: 'dusk', who: 'her'  }, CAM.close],    // 5 她笑了一下
+  ['busStop',   { mode: 'dusk', who: 'both' }, CAM.wide],     // 6 同一班车
+  ['river',     { walk: true },                CAM.wide],     // 7 影子比人长
+  ['shoes',     { pair: true, untie: true },   CAM.foot],     // 8 红鞋挂栏杆
+  ['river',     { walk: false },               CAM.drift],    // 9 雨落进河里
+  ['rainHouse', {},                            CAM.wide],     // 10 窗户朝西
+  ['roomNight', {},                            CAM.push],     // 11 磁带 / 倒着录
+  ['deckJam',   { jam: false, spill: .25 },    CAM.tight],    // 12 只有雨声
+  ['tableFood', {},                            CAM.wide],     // 13 白饭和青菜
+  ['tableFood', {},                            CAM.push],     // 14 她说八月要走
+  ['roomNight', { actor: false },              CAM.drift],    // 15 我没问为什么
+  ['shoes',     { pair: false },               CAM.foot],     // 16 红色的鞋子
+  ['shoes',     { pair: true, untie: true },   CAM.foot],     // 17 解开又系上
+  ['shoes',     { pair: true },                CAM.foot],     // 18 系紧一点
+  ['windowRain', {},                           CAM.push],     // 19 下了整夜
+  ['windowRain', {},                           CAM.drift],    // 20 雨小了一点
+  ['riverStand', {},                           CAM.wide],     // 21 河堤，没说话
+  ['riverStand', {},                           CAM.close],    // 22 记得那条路
+  ['riverStand', {},                           CAM.left],     // 23 我记得
+  ['busArrive', {},                            CAM.wide],     // 24 车来了
+  ['shoes',     { pair: true, untie: true },   CAM.foot],     // 25 鞋带递给我
+  ['busArrive', {},                            CAM.push],     // 26 只停三分钟
+  ['busStop',   { mode: 'night', who: 'her' }, CAM.drift],    // 27 她没有回头
+  ['busStop',   { mode: 'night', who: 'him' }, CAM.wide],     // 28 站到车灯看不见
+  ['roadBus',   {},                            CAM.wide],     // 29 后来的每个夏天
+  ['rainHouse', {},                            CAM.push],     // 30 搬到河边
+  ['roomNight', {},                            CAM.push],     // 31 录音机还在
+  ['tapeBig',   {},                            CAM.tight],    // 32 按下 PLAY
+  ['deckJam',   { jam: true, spill: .8 },      CAM.tight],    // 33 听了很久
+  ['tapeBig',   {},                            CAM.drift],    // 34 没有再擦掉
+  ['deckJam',   { jam: true, spill: 1 },       CAM.tight],    // 35 如果能倒回去
+  ['rainHouse', {},                            CAM.wide],     // 36 磁带留在录音机里
+];
+
+// 空白段补镜头（前奏 / 间奏 / 尾奏）：[t0, t1, set, args, cam]
+const GAPS = [
+  [0.0, 9.0, 'rainHouse', {}, CAM.wide],
+  [9.0, 18.0, 'windowRain', {}, CAM.push],
+  [18.0, 26.02, 'busStop', { mode: 'rain', who: 'none' }, CAM.left],
+  [96.5, 104.0, 'tapeBig', {}, CAM.tight],
+  [104.0, 112.0, 'river', { walk: false }, CAM.drift],
+  [112.0, 121.56, 'windowRain', {}, CAM.wide],
+  [236.0, 245.0, 'roomNight', {}, CAM.drift],
+  [245.0, 254.0, 'tapeBig', {}, CAM.push],
+  [254.0, 262.0, 'endCard', {}, CAM.wide],
+  [262.0, TOTAL, 'endCard', {}, CAM.wide],
+];
+
+function shot(t0, t1, set, args, cam, line) {
+  return { t0, t1, set, args: args || {}, cam, line };
+}
+
+function buildShots() {
+  const out = [];
+  // 主镜头：每句从它的时间戳开始，到下一句或空白段开始为止
+  for (let i = 0; i < 36; i++) {
+    const t0 = STAMPS[i];
+    const t1 = i < 35 ? STAMPS[i + 1] : 262.0;
+    const [set, args, cam] = MAIN[i];
+    // 长句（> 7.5s）里，字幕只压前 6.5 秒，后面交给空镜
+    if (t1 - t0 > 7.5) {
+      out.push(shot(t0, t0 + 6.5, set, args, cam, LINES[i]));
+      out.push(shot(t0 + 6.5, t1, set, args, { ...cam, z0: cam.z1, z1: cam.z0 }, null));
+    } else {
+      out.push(shot(t0, t1, set, args, cam, LINES[i]));
+    }
+  }
+  // 空白段按时间插进去
+  for (const [t0, t1, set, args, cam] of GAPS) out.push(shot(t0, t1, set, args, cam, null));
+  // 去掉被主镜头盖住的空镜（重叠时主镜头优先）
+  const mains = out.filter(s => s.line);
+  const gaps = out.filter(s => !s.line);
+  const kept = [];
+  for (const gp of gaps) {
+    const covered = mains.some(m => m.t0 <= gp.t0 + 0.01 && m.t1 >= gp.t1 - 0.01);
+    if (!covered && gp.t1 > gp.t0) kept.push(gp);
+  }
+  // 剪切：重叠处让位给主镜头
+  const all = [...mains, ...kept].sort((a, b) => a.t0 - b.t0);
+  const fixed = [];
+  for (const s of all) {
+    if (fixed.length && s.t0 < fixed[fixed.length - 1].t1) {
+      const prev = fixed[fixed.length - 1];
+      if (s.line) prev.t1 = Math.min(prev.t1, s.t0);
+      else continue;
+    }
+    fixed.push({ ...s });
+  }
+  return fixed.filter(s => s.t1 - s.t0 > 0.25);
+}
+
+const SHOT_LIST = buildShots();
+
+
+// ===== film.js =====
+// 星露谷风格 · 《恋人》MV —— 整首 275.9 秒，逐镜头渲染
+// 渲染：node core/render/video.mjs <此目录> --fps 24 --workers 3
+
 
 
 
 const qs = new URLSearchParams(location.search);
-const FRAME = qs.get('frame') || 'sample';
 const c = canvas();
 const g = c.g;
+const START = parseFloat(qs.get('from') || '0');
+const END = parseFloat(qs.get('to') || String(TOTAL));
 
-// —— 像素对话框：画在放大后的画面上（屏幕空间），不受镜头推拉影响 ——
+// —— 对话框：画在放大后的画面上（屏幕空间），不受镜头推拉 ——
 function panel(x, y, w, h) {
   const o = c.o, k = SCALE;
   const R = (a, b, cw, ch, col) => { o.fillStyle = col; o.fillRect(Math.round(a * k), Math.round(b * k), Math.round(cw * k), Math.round(ch * k)); };
   const ink = '#1a1020', cream = '#e8d3a8', fill = '#33243c';
   R(x + 2, y + 2, w, h, 'rgba(0,0,0,.34)');
-  R(x + 2, y, w - 4, h, ink);
-  R(x, y + 2, w, h - 4, ink);
+  R(x + 2, y, w - 4, h, ink); R(x, y + 2, w, h - 4, ink);
   R(x + 1, y + 1, 1, 1, ink); R(x + w - 2, y + 1, 1, 1, ink);
   R(x + 1, y + h - 2, 1, 1, ink); R(x + w - 2, y + h - 2, 1, 1, ink);
   R(x + 4, y + 1, w - 8, 1, cream); R(x + 4, y + h - 2, w - 8, 1, cream);
   R(x + 1, y + 4, 1, h - 8, cream); R(x + w - 2, y + 4, 1, h - 8, cream);
-  R(x + 2, y + 2, 1, 1, cream); R(x + w - 3, y + 2, 1, 1, cream);
-  R(x + 2, y + h - 3, 1, 1, cream); R(x + w - 3, y + h - 3, 1, 1, cream);
-  R(x + 3, y + 3, 1, 1, '#6b5674'); R(x + w - 4, y + 3, 1, 1, '#6b5674');
   R(x + 5, y + 3, w - 10, h - 6, fill);
 }
 
-// 字幕：字宽正好 6 的倍数对齐世界格，硬投影（没有模糊），字距 1 格
 function lyric(str, y = 160, x = 40, size = 42) {
   const o = c.o;
   o.save();
@@ -325,213 +943,97 @@ function lyric(str, y = 160, x = 40, size = 42) {
   o.restore();
 }
 
-function farmFrame(t) {
-  sky(g, 'dusk');
-  hills(g, 86);
-  ground(g, 124);
-  for (let i = 0; i < 46; i++) {
-    const y = 126 + i, x = 168 + i * 2;
-    rect(g, x, y, 26, 1, P.path);
-    px(g, x - 1, y, P.pathDark);
-    if (i % 7 === 0) hline(g, x + 3, x + 20, y, P.pathLit);
-  }
-  house(g, 26, 82, 92, 54, true);
-  fence(g, 210, 268, 138);
-  tree(g, 292, 128, 1.1);
-  tree(g, 276, 150, .8);
-  busstop(g, 250, 152);
-  actor(g, 'sebastian', 100, 118, { dir: 'down' });
-  rect(g, 94, 136, 20, 1, P.grassDark);
-  
+// 片名卡（用屏幕空间大字）
+function titleCard(main, sub) {
+  const o = c.o;
+  o.save();
+  o.textAlign = 'center'; o.textBaseline = 'middle';
+  o.font = '700 92px "Microsoft YaHei", sans-serif';
+  o.letterSpacing = '14px';
+  o.fillStyle = '#160f1c';
+  o.fillText(main, W * SCALE / 2 + 6, 74 * SCALE + 6);
+  o.fillStyle = '#fff6e4';
+  o.fillText(main, W * SCALE / 2, 74 * SCALE);
+  o.font = '600 34px "Microsoft YaHei", sans-serif';
+  o.letterSpacing = '8px';
+  o.fillStyle = '#c9b9d6';
+  o.fillText(sub, W * SCALE / 2, 132 * SCALE);
+  o.restore();
 }
 
-function stopFrame(t) {
-  sky(g, 'dusk');
-  hills(g, 84);
-  ground(g, 126);
-  for (const [x, w, h] of [[8, 28, 20], [42, 22, 15], [72, 34, 24], [112, 20, 13]]) {
-    rect(g, x, 130 - h, w, h, P.cream);
-    for (let i = 0; i < 9; i++) rect(g, x - 4 + i, 130 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
-    for (let wx = x + 4; wx < x + w - 4; wx += 9) rect(g, wx, 130 - h + 6, 4, 5, P.lampLit);
+function shotAt(t) {
+  let lo = 0, hi = SHOT_LIST.length - 1;
+  if (t <= SHOT_LIST[0].t0) return SHOT_LIST[0];
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (SHOT_LIST[mid].t0 <= t) lo = mid; else hi = mid - 1;
   }
-  rect(g, 0, 146, W, 22, P.pathDark);
-  rect(g, 0, 148, W, 18, P.path);
-  for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 156, P.cream);
-  busstop(g, 142, 148);
-  tree(g, 30, 148, 1.15);
-  tree(g, 250, 146, 1.25);
-  actor(g, 'sebastian', 104, 118, { dir: 'down' });
-  actor(g, 'penny', 186, 118, { dir: 'down' });
-  
+  return SHOT_LIST[lo];
 }
 
-// —— 5 秒样片：公交站，镜头缓推，末班车进站 ——
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-function bus(g, x, yb, door) {
-  const b = '#3f5480', bd = '#26314e', win = '#f4dfae', wheel = '#1b1522';
-  rect(g, x, yb - 40, 104, 40, b);
-  rect(g, x, yb - 40, 104, 4, '#5a71a4');
-  rect(g, x, yb - 9, 104, 9, bd);
-  // 车头朝左：驾驶窗、车门、车灯都在左边
-  for (let i = 0; i < 4; i++) rect(g, x + 22 + i * 21, yb - 34, 16, 14, win);
-  rect(g, x + 3, yb - 34, 13, 14, win);
-  rect(g, x + 3, yb - 34, 13, 7, '#cfe0f0');
-  rect(g, x + 17, yb - 6, 16, 8, wheel); rect(g, x + 71, yb - 6, 16, 8, wheel);
-  rect(g, x + 21, yb - 4, 8, 4, '#5c5c6c'); rect(g, x + 75, yb - 4, 8, 4, '#5c5c6c');
-  rect(g, x + 1, yb - 22, 3, 6, '#ffe9a8');
-  rect(g, x + 4, yb - 46, 34, 6, P.cream);
-  rect(g, x + 6, yb - 45, 30, 4, '#2b3550');
-  if (door) { rect(g, x + 18, yb - 34, 10, 26, '#10151f'); rect(g, x + 22, yb - 32, 1, 22, '#3f5480'); }
-  // 车头：倒角 + 前脸暗边 + 保险杠，读得出是车头
-  rect(g, x, yb - 40, 3, 5, bd);
-  rect(g, x + 3, yb - 40, 2, 4, bd);
-  rect(g, x, yb - 35, 2, 25, bd);
-  rect(g, x, yb - 10, 5, 10, '#161c2c');
-  rect(g, x + 5, yb - 8, 6, 3, '#2b3550');
-  rect(g, x, yb - 40, 104, 2, '#5a71a4');
-}
-
-function sampleFrame(t) {
-  sky(g, 'dusk');
-  hills(g, 84);
-  ground(g, 126);
-  for (const [x, w, h] of [[8, 28, 20], [42, 22, 15], [72, 34, 24], [112, 20, 13]]) {
-    rect(g, x, 130 - h, w, h, P.cream);
-    for (let i = 0; i < 9; i++) rect(g, x - 4 + i, 130 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
-    for (let wx = x + 4; wx < x + w - 4; wx += 9) rect(g, wx, 130 - h + 6, 4, 5, P.lampLit);
-  }
-  // 草在风里晃
-  for (let i = 0; i < 34; i++) {
-    const x = 6 + i * 9, y = 172 + (i % 4);
-    const s = Math.round(Math.sin(t * 2.2 + i * 0.7) * 1.4);
-    px(g, x + s, y, P.grassHi);
-    px(g, x + s + 1, y + 1, P.grassLit);
-  }
-  rect(g, 0, 146, W, 22, P.pathDark);
-  rect(g, 0, 148, W, 18, P.path);
-  for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 156, P.cream);
-  // 车进站：3.0 s 起，1.1 s 内减速停稳
-  const p = clamp((t - 2.9) / 1.15, 0, 1);
-  const ease = 1 - Math.pow(1 - p, 3);
-  busstop(g, 120, 148);
-  tree(g, 30, 148, 1.15);
-  tree(g, 302, 146, 1.25);
-  actor(g, 'penny', 150, 118, { dir: 'down' });
-  const walkP = Math.min(1, t / 1.4);
-  const wx = Math.round(58 + 38 * (1 - Math.pow(1 - walkP, 2)));
-  const bob = walkP < 1 && Math.floor(t * 7) % 2 ? 1 : 0;
-  actor(g, 'sebastian', wx, 118 - bob, { dir: walkP < 1 ? 'right' : 'down', frame: Math.floor(t * 8) });
-  // 车最后画：它在最近的马路上，要压住长椅、树、人
-  if (t > 2.85) bus(g, 340 - (340 - 200) * ease, 168, t > 4.25);
-}
-
-function roomFrame(t) {
-  rect(g, 0, 0, W, 98, '#2b2233');
-  for (let y = 0; y < 98; y += 11) hline(g, 0, W - 1, y, '#332838');
-  rect(g, 0, 98, W, H - 98, '#4a3630');
-  for (let y = 98; y < H; y += 12) {
-    hline(g, 0, W - 1, y, '#3a2a26');
-    for (let x = ((y * 3) % 24); x < W; x += 24) vline(g, x, y + 1, y + 10, '#573f37');
-  }
-  rect(g, 34, 24, 86, 62, P.woodDark);
-  rect(g, 37, 27, 80, 56, '#16233a');
-  for (let i = 0; i < 26; i++) {
-    const x = 38 + ((i * 37) % 78);
-    const y = 28 + (((i * 53) + Math.floor(t * 40 + i * 7)) % 54);
-    px(g, x, y, '#4f74a8'); px(g, x, y + 1, '#3a5784');
-  }
-  vline(g, 77, 27, 82, P.woodDark); hline(g, 37, 116, 55, P.woodDark);
-  rect(g, 28, 84, 98, 5, P.wood);
-  rect(g, 150, 6, 22, 4, P.woodDark);
-  rect(g, 152, 10, 18, 7, P.lampLit);
-  rect(g, 154, 11, 14, 4, '#ffe9a8');
-  for (let r = 0; r < 22; r += 2) {
-    for (let a = 0; a < r * 4; a++) {
-      const th = a / (r * 4) * 6.2832;
-      const x = Math.round(161 + Math.cos(th) * (r + 4)), y = Math.round(20 + Math.sin(th) * (r * .8 + 4));
-      if (y > 17 && y < 96 && x > 0 && x < W) px(g, x, y, r % 4 ? '#6d5238' : '#7d5f40');
-    }
-  }
-  rect(g, 108, 100, 100, 26, P.wood);
-  rect(g, 108, 100, 100, 3, P.woodLit);
-  vline(g, 158, 100, 126, P.woodDark);
-  rect(g, 124, 86, 44, 15, '#2e2a34');
-  rect(g, 126, 88, 40, 11, '#191620');
-  rect(g, 132, 90, 10, 4, '#4a4334'); rect(g, 150, 90, 10, 4, '#4a4334');
-  px(g, 145, 96, P.lampLit); px(g, 146, 96, P.lampLit);
-  rect(g, 180, 90, 18, 11, '#3b3440');
-  rect(g, 182, 92, 14, 6, P.cream);
-  rect(g, 184, 93, 10, 1, '#c8403c');
-  actor(g, 'sebastian', 236, 96, { dir: 'down' });
-  rect(g, 234, 128, 20, 1, '#33281f');
-  
-}
-
-// 人物卡：两个人 3 倍并排，右下角放 1× 参照，看片里实际多大
-function castFrame(t) {
-  rect(g, 0, 0, W, H, '#1a1a26');
-  for (let x = 0; x < W; x += 8) vline(g, x, 0, H, '#20202e');
-  for (let y = 0; y < H; y += 8) hline(g, 0, W, y, '#20202e');
-  const rows = [['sebastian', 30], ['penny', 86]];
-  for (const [who, y] of rows) {
-    rect(g, 32, y - 4, 92, 40, '#242434');
-    rect(g, 130, y - 4, 92, 40, '#242434');
-    for (let f = 0; f < 4; f++) actor(g, who, 38 + f * 21, y, { dir: 'down', frame: f });
-    for (let f = 0; f < 4; f++) actor(g, who, 136 + f * 21, y, { dir: 'right', frame: f });
-  }
-  rect(g, 0, 134, W, 46, '#141420');
-}
 function draw(t) {
   g.clearRect(0, 0, W, H);
-  if (FRAME === 'stop') stopFrame(t);
-  else if (FRAME === 'room') roomFrame(t);
-  else if (FRAME === 'cast') castFrame(t);
-  else if (FRAME === 'sample') sampleFrame(t);
-  else farmFrame(t);
-  let cam = null;
-  if (FRAME === 'sample') {
-    const z = 1 + 0.10 * clamp(t / 5, 0, 1);
-    const fx = 140 * SCALE, fy = 96 * SCALE;
-    cam = { z, ox: -(z - 1) * fx, oy: -(z - 1) * fy };
+  const s = shotAt(t);
+  const u = clamp((t - s.t0) / Math.max(.001, s.t1 - s.t0), 0, 1);
+  const lt = t - s.t0;
+  const fn = SETS[s.set] || SETS.busStop;
+  fn(g, t, lt, u, s.args);
+
+  const cam = s.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
+  const z = cam.z0 + (cam.z1 - cam.z0) * u;
+  const fx = cam.x * SCALE, fy = cam.y * SCALE;
+  document.body.replaceChildren(present(c, P.sky0, { z, ox: -(z - 1) * fx, oy: -(z - 1) * fy }));
+
+  if (s.line) {
+    panel(14, 150, 292, 26);
+    lyric(s.line, 164, 40, 42);
   }
-  document.body.replaceChildren(present(c, P.sky0, cam));
-  if (FRAME === 'stop' || FRAME === 'sample') {
-    panel(14, 14, 292, 28);
-    lyric('她说，八月底的车，只停三分钟。', 29, 44, 46);
-  } else if (FRAME === 'room') {
-    panel(14, 150, 292, 28);
-    lyric('我按下 PLAY，磁带卡住了。', 165, 44, 46);
-  } else if (FRAME === 'farm') {
-    panel(14, 150, 292, 28);
-    lyric('那年夏天，我把磁带留在了录音机里。', 165, 44, 46);
-  } else if (FRAME === 'cast') {
-    lyric('塞巴斯蒂安', 18, 36, 30);
-    lyric('潘妮', 18, 168, 30);
-    lyric('下 / 右，各四帧——走路是这么动起来的', 148, 36, 26);
+  if (t < 5.2) {
+    const a = t < 4.0 ? 1 : (5.2 - t) / 1.2;
+    if (a > 0.02) {
+      c.o.save(); c.o.globalAlpha = a;
+      titleCard('恋人', 'based on 李荣浩《恋人》 ／ Stardew Valley fan film');
+      c.o.restore();
+    }
+  }
+  if (t > 258) {
+    const a = t > 268 ? 1 : (t - 258) / 10;
+    c.o.save(); c.o.globalAlpha = a;
+    const o = c.o;
+    o.textAlign = 'center'; o.font = '700 64px "Microsoft YaHei", sans-serif';
+    o.letterSpacing = '10px'; o.fillStyle = '#160f1c';
+    o.fillText('恋人', W * SCALE / 2 + 5, 62 * SCALE + 5);
+    o.fillStyle = '#fff6e4';
+    o.fillText('恋人', W * SCALE / 2, 62 * SCALE);
+    o.font = '500 26px "Microsoft YaHei", sans-serif';
+    o.letterSpacing = '4px'; o.fillStyle = '#b9a9c6';
+    o.fillText('那年夏天，我把磁带留在了录音机里', W * SCALE / 2, 96 * SCALE);
+    o.restore();
   }
 }
+
 await loadSprites();
 window.render = draw;
-window.DUR = FRAME === 'sample' ? 5 : 8;
-draw(0);
+window.DUR = TOTAL;
+draw(START);
 window.READY = true;
 
 
-// —— 播放循环：24 fps，5 秒一循环 ——
+// —— 24 fps 循环播放整片 ——
 const t0 = performance.now();
 const STEP = 1000 / 24;
 let last = -1;
 function tick() {
   const ms = performance.now() - t0;
+  const total = window.DUR || 275.925;
+  const t = (ms / 1000) % total;
   const f = Math.floor(ms / STEP);
-  if (f !== last) {
-    last = f;
-    draw((ms / 1000) % (window.DUR || 5));
-  }
+  if (f !== last) { last = f; window.render(t); }
   requestAnimationFrame(tick);
 }
-requestAnimationFrame(tick);
+tick();
 </script>
 </body>
 </html>

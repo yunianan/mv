@@ -1,0 +1,18 @@
+{
+  "name": "wo-huai-nian-de-mv",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Original watercolor music video, drawn frame by frame with p5.js and p5.brush.",
+  "scripts": {
+    "sheet": "node render.mjs --sheet=0,1,2,3,4,5 --out=out/sheet.jpg",
+    "video": "node render.mjs --clip --out=out/video.mp4",
+    "import-lyrics": "node tools/import-lyrics.mjs",
+    "postinstall": "node tools/patch-brush-resources.mjs"
+  },
+  "dependencies": {
+    "p5": "^2.3.3",
+    "p5.brush": "2.2.3",
+    "puppeteer-core": "^25.11.0"
+  }
+}
