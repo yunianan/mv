@@ -316,30 +316,52 @@ export function river(g, t, lt, u, s) {
 // ───────────── 7. 饭桌（两人 / 一人） ─────────────
 export function tableFood(g, t, lt, u, s) {
   const alone = !!(s && s.alone);
-  // 墙 0..78，地板 78..180
-  rect(g, 0, 0, W, 70, alone ? '#1c2130' : '#3a2330');
-  for (let x = 0; x < W; x += 26) vline(g, x, 0, 70, alone ? '#222839' : '#452b3a');
-  rect(g, 0, 66, W, 4, alone ? '#141a26' : '#2a1a24');
-  floorPlanks(g, 70, alone ? '#5a4436' : '#6b5040', '#3f2c22', alone ? '#6b5242' : '#7d6250');
-  windowBox(g, alone ? 208 : 22, 12, 60, 40, alone ? 'rain' : 'dusk', t);
-  // 桌子：桌面 y=96，腿到 150
-  const ty = 92;
-  rect(g, 54, ty, 212, 6, P.woodLit);
-  rect(g, 54, ty + 6, 212, 3, P.wood);
-  rect(g, 54, ty + 9, 212, 2, P.woodDark);
-  rect(g, 64, ty + 11, 4, 42, P.woodDark); rect(g, 252, ty + 11, 4, 42, P.woodDark);
-  // 桌上
-  if (alone) { bowl(g, 116, ty - 10); cup(g, 150, ty - 8); greens(g, 132, ty - 8, 5); }
-  else { bowl(g, 92, ty - 10); bowl(g, 150, ty - 10); greens(g, 122, ty - 8, 7); cup(g, 176, ty - 8); }
-  // 人：坐在桌后，脚被桌子挡住
-  if (alone) actor(g, 'sebastian', 74, 60, { dir: 'right', frame: 0 });
-  else {
-    actor(g, 'sebastian', 80, 60, { dir: 'right', frame: 0 });
-    actor(g, 'penny', 208, 60, { dir: 'left', frame: 0 });
+  // 俯看桌面：不出现整身小人，就没有比例问题
+  rect(g, 0, 0, W, 46, alone ? '#1b202e' : '#3a2330');
+  for (let x = 0; x < W; x += 26) vline(g, x, 0, 46, alone ? '#222839' : '#452b3a');
+  rect(g, 0, 42, W, 4, alone ? '#141a26' : '#2a1a24');
+  rect(g, 0, 46, W, H - 46, alone ? '#3f2f26' : '#4a3729');
+  for (let y = 46; y < H; y += 18) { hline(g, 0, W - 1, y, '#3a2b20'); }
+  // 桌面（俯视：一个大梯形）
+  const t0 = 58, t1 = 172;
+  for (let y = t0; y < t1; y++) {
+    const u2 = (y - t0) / (t1 - t0);
+    const half = 74 + u2 * 46;
+    hline(g, Math.round(160 - half), Math.round(160 + half), y, y < t0 + 4 ? '#8a6244' : '#7a563c');
+    if (y % 7 === 0) for (const f of [-.6, -.2, .2, .6]) px(g, Math.round(160 + half * f), y, '#6b4a33');
   }
-  if (alone) dither(g, 0, 0, W, H, 'rgba(18,22,34,.4)', 'rgba(0,0,0,0)', 10);
+  hline(g, 86, 234, t0, '#a67a55'); hline(g, 84, 236, t0 + 1, '#8a6244');
+  // 碗、筷、蒸汽
+  const bowlY = 96;
+  if (alone) { bowl(g, 146, bowlY); hline(g, 170, 190, bowlY + 4, '#d8c8a8'); steam(g, 155, bowlY - 4, t); }
+  else {
+    bowl(g, 118, bowlY); bowl(g, 186, bowlY);
+    hline(g, 140, 158, bowlY + 4, '#d8c8a8'); hline(g, 168, 184, bowlY + 4, '#d8c8a8');
+    steam(g, 127, bowlY - 4, t); steam(g, 195, bowlY - 4, t + 1.7);
+    // 两双手：从画面下缘伸进来
+    hand(g, 128, 134, 1); hand(g, 196, 134, -1);
+  }
+  if (alone) hand(g, 148, 136, 1);
+  // 一碟青菜
+  greens(g, 150, 118, 9);
+  if (alone) dither(g, 0, 0, W, H, 'rgba(16,20,32,.42)', 'rgba(0,0,0,0)', 10);
+  // 桌面上的暖光
+  for (let y = t0; y < t1; y += 2) for (let x = 120; x < 200; x += 2) if (BAYT(x, y, 6)) px(g, x, y, '#8f6a4a');
 }
-
+function steam(g, x, y, t) {
+  for (let i = 0; i < 3; i++) {
+    const ph = (t * .8 + i * .33) % 1;
+    const yy = y - Math.round(ph * 10);
+    const xx = x + Math.round(Math.sin((ph + i) * 3.1) * 2);
+    if (BAYT(xx, yy, 3)) px(g, xx, yy, '#cfc4d8');
+  }
+}
+function hand(g, x, y, dir) {
+  const sk = '#e8b8a0', dk = '#b98a76';
+  rect(g, x, y, 12, 4, sk); rect(g, x + 2, y - 3, 8, 4, sk);
+  rect(g, x + 1, y + 3, 10, 1, dk);
+  hline(g, x + (dir > 0 ? 11 : 0), x + (dir > 0 ? 18 : 7), y + 1, '#e8dcc4');
+}
 // ───────────── 8. 鞋（门槛特写） ─────────────
 // 帆布鞋按行画：一行一串 [y, x0, x1, 色键]，1 格 = s 像素
 const SHOE_ART = [
@@ -516,7 +538,18 @@ export function busArrive(g, t, lt, u, s) {
 }
 
 // ───────────── 13. 片名卡 ─────────────
-export function endCard(g, t, lt, u) {
+export function endCard(g, t, lt, u, s) {
+  const style = (s && s.style) || 'wide';
+  if (style === 'blank') { rect(g, 0, 0, W, H, '#0b0910'); dither(g, 0, 0, W, H, '#100d16', '#0b0910', 9); return; }
+  if (style === 'card') {
+    // 最后的黑场卡：一盘磁带躺在雨里
+    rect(g, 0, 0, W, H, '#0b0910');
+    dither(g, 0, 0, W, H, '#131019', '#0b0910', 7);
+    cassette(g, 136, 96, 1.1, true);
+    rect(g, 130, 128, 60, 2, '#1c161f');
+    rainSplash(g, t, 150, 10);
+    return;
+  }
   sky(g, 'night'); hills(g, 86); ground(g, 122, H, '#1e2f28');
   for (let i = 0; i < 3; i++) rect(g, 20 + i * 34, 100 - i * 4, 28, 22 + i * 4, '#232a3d');
   busstop(g, 250, 146);

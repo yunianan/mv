@@ -170,7 +170,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // ── 镜头组：同一场景 + 同一参数 + 时间相邻的镜头合成一段「长镜头」，
 // 组内切换只换字幕、机位连续 ──
-const KEY = s => s.set + '|' + JSON.stringify(s.args || {});
+const KEY = s => s.set;
 const RUNS = [];
 {
   let cur = null;
@@ -218,6 +218,8 @@ function draw(t) {
   const fn = SETS[s.set] || SETS.busStop;
   fn(g, t, lt, u, s.args);
   if (idx === 0) worldTitle(g, '恋人', t);
+  if (s.set === 'endCard' && s.args && s.args.style === 'card') pixText(g, '恋人', 161, 109, 7, '#2a2430');
+
 
   const run = RUNS[idx];
   const cam = run.cam || s.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
@@ -231,7 +233,10 @@ function draw(t) {
 
   // 换场景：0.26 秒交叉淡入，上一镜的余像叠在上面慢慢退掉
   const prev = idx > 0 ? SHOT_LIST[idx - 1] : null;
-  if (prev && RUNS[idx] !== RUNS[idx - 1] && !window.__noXF && t - s.t0 < .28) {
+  const sameLook = prev && prev.set === s.set &&
+    ((prev.args && prev.args.mode) || '') === ((s.args && s.args.mode) || '') &&
+    ((prev.args && prev.args.style) || '') === ((s.args && s.args.style) || '');
+  if (prev && !sameLook && !window.__noXF && t - s.t0 < .28) {
     const nearSec = SECTIONS.some(b => Math.abs(s.t0 - b) < .22);
     if (!nearSec) {
       const xf = clamp((t - s.t0) / .28, 0, 1);
@@ -250,7 +255,7 @@ function draw(t) {
     (s.set === 'river' && s.args && s.args.rain);
   if (rainy) rainScreen(c.o, t, c.out.width, c.out.height, s.set === 'endCard' ? 1.25 : 1);
 
-  if (s.line) {
+  if (s.line && s.set !== 'endCard') {
     // 字幕框跟着切点淡入淡出，别「啪」地出现
     const fin = clamp((t - s.t0) / .12, 0, 1);
     const nxt = SHOT_LIST[idx + 1];
@@ -278,18 +283,20 @@ function draw(t) {
       c.o.restore();
     }
   }
-  if (t > 258) {
-    const a = t > 268 ? 1 : (t - 258) / 10;
+  // 最后一张：纯黑 + 片名 + 出处（只在 blank 段）
+  if (s.set === 'endCard' && s.args && s.args.style === 'blank') {
+    const a = clamp((t - 269.2) / .8, 0, 1);
     c.o.save(); c.o.globalAlpha = a;
     const o = c.o;
-    o.textAlign = 'center'; o.font = '700 64px "Microsoft YaHei", sans-serif';
-    o.letterSpacing = '10px'; o.fillStyle = '#160f1c';
-    o.fillText('恋人', W * SCALE / 2 + 5, 62 * SCALE + 5);
+    o.textAlign = 'center'; o.font = '700 96px "Microsoft YaHei", sans-serif';
+    o.letterSpacing = '16px'; o.fillStyle = '#160f1c';
+    o.fillText('恋人', W * SCALE / 2 + 6, 58 * SCALE + 6);
     o.fillStyle = '#fff6e4';
-    o.fillText('恋人', W * SCALE / 2, 62 * SCALE);
+    o.fillText('恋人', W * SCALE / 2, 58 * SCALE);
+    o.fillStyle = '#b0704e'; o.fillRect(W * SCALE / 2 - 120, 68 * SCALE, 240, 3);
     o.font = '500 26px "Microsoft YaHei", sans-serif';
-    o.letterSpacing = '4px'; o.fillStyle = '#b9a9c6';
-    o.fillText('那年夏天，我把磁带留在了录音机里', W * SCALE / 2, 96 * SCALE);
+    o.letterSpacing = '5px'; o.fillStyle = '#b9a9c6';
+    o.fillText('based on 李荣浩《恋人》 ／ Stardew Valley fan film', W * SCALE / 2, 78 * SCALE);
     o.restore();
   }
 }

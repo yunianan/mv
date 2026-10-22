@@ -1,4 +1,4 @@
-﻿// 分镜表：整首歌 0 → 275.9 秒，切成一串镜头
+// 分镜表：整首歌 0 → 275.9 秒，切成一串镜头
 // 每个镜头 = { t0, t1, set, args, cam, line?, panelAt? }
 // cam = { x, y, z0, z1 }（世界格坐标；z 是推近倍率）
 import { W, H } from './px.js';
@@ -62,6 +62,7 @@ const CAM = {
   left:   { x: 96,  y: 104, z0: 1.04, z1: 1.12 },
   drift:  { x: 180, y: 96,  z0: 1.26, z1: 1.14 },
   foot:   { x: 112, y: 106, z0: 1.05, z1: 1.14 },
+  meal:   { x: 160, y: 96, z0: 1.06, z1: 1.16 },
 };
 
 // 36 个主镜头（顺序对应 36 句）
@@ -78,8 +79,8 @@ const MAIN = [
   ['rainHouse', {},                            CAM.wide],     // 10 窗户朝西
   ['roomNight', {},                            CAM.push],     // 11 磁带 / 倒着录
   ['deckJam',   { jam: false, spill: .25 },    CAM.tight],    // 12 只有雨声
-  ['tableFood', {},                            CAM.wide],     // 13 白饭和青菜
-  ['tableFood', {},                            CAM.push],     // 14 她说八月要走
+  ['tableFood', {},                            CAM.meal],     // 13 白饭和青菜
+  ['tableFood', {},                            CAM.meal],     // 14 她说八月要走
   ['roomNight', { actor: false },              CAM.drift],    // 15 我没问为什么
   ['shoes',     { pair: false },               CAM.foot],     // 16 红色的鞋子
   ['shoes',     { pair: true, untie: true },   CAM.foot],     // 17 解开又系上
@@ -112,10 +113,11 @@ const GAPS = [
   [96.5, 104.0, 'tapeBig', {}, CAM.tight],
   [104.0, 112.0, 'river', { walk: false }, CAM.drift],
   [112.0, 121.56, 'windowRain', {}, CAM.wide],
-  [236.0, 245.0, 'roomNight', {}, CAM.drift],
-  [245.0, 254.0, 'tapeBig', {}, CAM.push],
-  [254.0, 262.0, 'endCard', {}, CAM.wide],
-  [262.0, TOTAL, 'endCard', {}, CAM.wide],
+  [241.5, 248.5, 'roomNight', {}, CAM.drift],
+  [248.5, 255.5, 'busStop', { mode: 'rain', who: 'him' }, CAM.left],
+  [255.5, 262.0, 'endCard', {}, CAM.wide],
+  [262.0, 269.0, 'endCard', { style: 'card' }, CAM.push],
+  [269.0, TOTAL, 'endCard', { style: 'blank' }, CAM.wide],
 ];
 
 function shot(t0, t1, set, args, cam, line) {
@@ -127,7 +129,7 @@ export function buildShots() {
   // 主镜头：每句从它的时间戳开始，到下一句或空白段开始为止
   for (let i = 0; i < 36; i++) {
     const t0 = STAMPS[i];
-    const t1 = i < 35 ? STAMPS[i + 1] : 262.0;
+    const t1 = i < 35 ? STAMPS[i + 1] : 241.5;
     const [set, args, cam] = MAIN[i];
     // 长句（> 7.5s）里，字幕只压前 6.5 秒，后面交给空镜
     if (t1 - t0 > 7.5) {
