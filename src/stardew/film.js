@@ -285,7 +285,7 @@ function draw(t) {
   }
   // 最后一张：纯黑 + 片名 + 出处（只在 blank 段）
   if (s.set === 'endCard' && s.args && s.args.style === 'blank') {
-    const a = clamp((t - 269.2) / .8, 0, 1);
+    const a = clamp((t - 265.0) / .9, 0, 1);
     c.o.save(); c.o.globalAlpha = a;
     const o = c.o;
     o.textAlign = 'center'; o.font = '700 96px "Microsoft YaHei", sans-serif';

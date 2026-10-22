@@ -113,11 +113,10 @@ const GAPS = [
   [96.5, 104.0, 'tapeBig', {}, CAM.tight],
   [104.0, 112.0, 'river', { walk: false }, CAM.drift],
   [112.0, 121.56, 'windowRain', {}, CAM.wide],
-  [241.5, 248.5, 'roomNight', {}, CAM.drift],
-  [248.5, 255.5, 'busStop', { mode: 'rain', who: 'him' }, CAM.left],
-  [255.5, 262.0, 'endCard', {}, CAM.wide],
-  [262.0, 269.0, 'endCard', { style: 'card' }, CAM.push],
-  [269.0, TOTAL, 'endCard', { style: 'blank' }, CAM.wide],
+  [241.5, 249.5, 'roomNight', {}, CAM.drift],
+  [249.5, 257.5, 'deckEnd', {}, { x: 160, y: 86, z0: 1.02, z1: 1.10 }],
+  [257.5, 264.5, 'endCard', { style: 'card' }, CAM.push],
+  [264.5, TOTAL, 'endCard', { style: 'blank' }, CAM.wide],
 ];
 
 function shot(t0, t1, set, args, cam, line) {
