@@ -324,6 +324,13 @@ const ROW = { sit: 6 };
 
 
 // ───────────── 通用零件 ─────────────
+const BAYT = (y, x, n) => ((x * 7 + y * 13) % n) === 0;
+function dimWallS(g) {
+  for (let y = 0; y < 62; y++) for (let x = 0; x < W; x++) {
+    const lv = (1 - y / 62) * .5;
+    if (lv > .02 && BAYT(y, x, Math.max(2, Math.round(2 / lv)))) px(g, x, y, '#191322');
+  }
+}
 const clampS = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ease = u => 1 - Math.pow(1 - clampS(u, 0, 1), 3);
 
@@ -654,54 +661,79 @@ function tableFood(g, t, lt, u, s) {
 }
 
 // ───────────── 8. 鞋（门槛特写） ─────────────
-function bigShoe(g, x, y, kind) {
-  const red = kind === 'red';
-  const up = red ? P.herShoe : P.boot;
-  const hi = red ? '#e0564c' : P.bootLit;
-  const lo = red ? '#8f2f2a' : '#2a1a12';
-  const sole = red ? P.cream : '#3b2a1e';
-  // 鞋身（脚尖朝右，逐行收边）
-  const rows = [
-    [0, 40, 54], [2, 34, 60], [4, 30, 64], [6, 28, 68], [8, 27, 70],
-    [10, 26, 70], [12, 26, 70], [14, 26, 70],
-  ];
-  rows.forEach(([dy, x0, x1]) => rect(g, x + x0, y - 24 + dy, x1 - x0, 2, up));
-  rect(g, x + 26, y - 24, 30, 3, hi);
-  // 后跟
-  rect(g, x + 26, y - 24, 8, 22, lo);
-  rect(g, x + 26, y - 24, 3, 20, up);
-  // 鞋舌 + 鞋带
-  rect(g, x + 40, y - 22, 8, 8, lo);
-  for (let i = 0; i < 4; i++) rect(g, x + 38 + i * 6, y - 20 + i * 3, 5, 2, red ? '#fff6e4' : '#8a6a4a');
-  // 白底 + 大底
-  rect(g, x + 24, y - 2, 48, 4, sole);
-  rect(g, x + 24, y + 2, 48, 2, '#d8ccb0');
-  rect(g, x + 22, y + 4, 52, 2, '#120d14');
-  // 鞋头包边
-  rect(g, x + 66, y - 8, 4, 7, sole);
-  if (red) {
-    // 双结：两根带子
-    rect(g, x + 30, y - 28, 10, 4, '#e8dcc4');
-    rect(g, x + 36, y - 31, 8, 3, '#e8dcc4');
-    px(g, x + 44, y - 32, '#e8dcc4'); px(g, x + 28, y - 29, '#e8dcc4');
+// 帆布鞋按行画：一行一串 [y, x0, x1, 色键]，1 格 = s 像素
+const SHOE_ART = [
+  // 红帆布鞋：鞋尖朝右；鞋底 2 行，鞋帮 7 行，后跟领口抬高
+  [1, 4, 9, 'R'],
+  [2, 3, 10, 'R'],
+  [3, 2, 11, 'R'], [3, 12, 26, 'l'],
+  [4, 2, 11, 'R'], [4, 12, 28, 'r'],
+  [5, 2, 6, 'R'], [5, 7, 20, 'p'], [5, 21, 29, 'r'],
+  [6, 2, 6, 'R'], [6, 7, 20, 'p'], [6, 21, 29, 'r'],
+  [7, 2, 6, 'R'], [7, 7, 20, 'p'], [7, 21, 30, 'r'],
+  [8, 2, 6, 'R'], [8, 7, 20, 'p'], [8, 21, 27, 'r'], [8, 28, 31, 'W'],
+  [9, 2, 6, 'R'], [9, 7, 27, 'r'], [9, 28, 31, 'W'],
+  [10, 2, 31, 'W'],
+  [11, 2, 31, 'w'],
+  [12, 3, 30, 'k'],
+];
+const SHOE_HIS = [
+  // 旧皮鞋：鞋帮高、颜色暗，鞋尖同样朝右
+  [0, 3, 9, 'd'],
+  [1, 2, 10, 'd'],
+  [2, 2, 11, 'd'], [2, 12, 26, 'o'],
+  [3, 2, 11, 'd'], [3, 12, 27, 'o'],
+  [4, 2, 11, 'd'], [4, 12, 28, 'o'],
+  [5, 2, 11, 'd'], [5, 12, 29, 'o'],
+  [6, 2, 29, 'o'],
+  [7, 2, 30, 'o'],
+  [8, 2, 30, 'o'],
+  [9, 2, 30, 'o'],
+  [10, 3, 30, 'B'],
+  [11, 3, 29, 'b'],
+  [12, 4, 28, 'k'],
+];const SHOE_MAP = {
+  k: '#0d0b12', r: '#b3352f', R: '#8a2622', p: '#9c2c27', l: '#d8544a', w: '#e6dcc6', W: '#f6efdd',
+  o: '#8a5f3e', d: '#5e4029', B: '#2a1a12', b: '#4a3524',
+};
+// 先描一圈 1px 黑边，再上行内颜色，读起来才像像素道具
+function shoeArt(g, x, y, s, art, map) {
+  for (const [ry, x0, x1] of art) {
+    rect(g, x + (x0 - 1) * s, y + ry * s, (x1 - x0 + 3) * s, s, map.k);
+    rect(g, x + x0 * s, y + (ry - 1) * s, (x1 - x0 + 1) * s, s, map.k);
+  }
+  for (const [ry, x0, x1, key] of art) {
+    const c = map[key];
+    if (!c) continue;
+    rect(g, x + x0 * s, y + ry * s, (x1 - x0 + 1) * s, s, c);
+  }
+  // 鞋带：三根白条压在鞋舌上
+  if (art === SHOE_ART) {
+    for (const ly of [5, 7]) rect(g, x + 9 * s, y + ly * s, 10 * s, s, map.w);
   }
 }
 function shoes(g, t, lt, u, s) {
   const pair = (s && s.pair) !== false;
-  rect(g, 0, 0, W, 100, '#232a3a');
-  rect(g, 0, 94, W, 6, '#39405a');
-  floorPlanks(g, 100, '#5a4436', '#3a2a22', '#6b5242');
-  const baseY = 140;
-  rect(g, 40, baseY + 3, 80, 4, '#2f2118');
-  bigShoe(g, 36, baseY, 'red');
-  if (pair) { rect(g, 128, baseY + 3, 80, 4, '#2f2118'); bigShoe(g, 124, baseY, 'brown'); }
+  // 墙 0..104，地板 104..180，左边一道门框
+  rect(g, 0, 0, W, 62, '#2a2130');
+  rect(g, 0, 58, W, 4, '#3c2f38');
+  rect(g, 0, 0, 14, 62, '#3a2a2e');
+  rect(g, 13, 0, 1, 62, '#57403f');
+  floorPlanks(g, 62, '#5a4436', '#3a2a22', '#6b5242');
+  // 墙面上淡下暗（低机位看到的是地板，墙只留一条）
+  dimWallS(g);  const sc = 3;
+  if (pair) shoeArt(g, 176, 100, sc, SHOE_HIS, SHOE_MAP);
+  shoeArt(g, 34, 96, sc, SHOE_ART, SHOE_MAP);
+  // 接地阴影：鞋底正下方一条实线 + 再往下两层抖动
+  rect(g, 36, 139, 100, 2, '#241a14');
+  for (let i = 1; i <= 3; i++) for (let xx = 36 + i * 2; xx < 136 - i * 2; xx += 2) px(g, xx, 140 + i, '#2e2118');
+  if (pair) { rect(g, 178, 143, 100, 2, '#241a14'); for (let i = 1; i <= 3; i++) for (let xx = 178 + i * 2; xx < 278 - i * 2; xx += 2) px(g, xx, 144 + i, '#2e2118'); }
   if (s && s.untie) {
-    rect(g, 88, 104, 18, 12, P.skin);
-    rect(g, 96, 112, 6, 16, P.skinDark);
-    hline(g, 74, 108, 118, '#e8dcc4');
-    px(g, 106, 119, '#e8dcc4');
+    rect(g, 96, 120, 16, 10, P.skin);
+    rect(g, 104, 128, 6, 14, P.skinDark);
+    hline(g, 88, 118, 132, '#efe6d2');
   }
-  dither(g, 0, 0, W, 22, 'rgba(12,10,18,.45)', 'rgba(0,0,0,0)', 6);
+  dither(g, 0, 0, W, 18, 'rgba(12,10,18,.45)', 'rgba(0,0,0,0)', 6);
 }
 // ───────────── 9. 卡带 / 倒带特写 ─────────────
 function deckJam(g, t, lt, u, s) {
