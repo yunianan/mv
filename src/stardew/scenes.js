@@ -74,7 +74,7 @@ const MAIN = [
   ['busStop',   { mode: 'dusk', who: 'both' }, CAM.wide],     // 6 同一班车
   ['river',     { walk: true },                CAM.wide],     // 7 影子比人长
   ['shoes',     { pair: true, untie: true },   CAM.foot],     // 8 红鞋挂栏杆
-  ['river',     { walk: false },               CAM.drift],    // 9 雨落进河里
+  ['river',     { walk: false, rain: true },    CAM.drift],    // 9 雨落进河里
   ['rainHouse', {},                            CAM.wide],     // 10 窗户朝西
   ['roomNight', {},                            CAM.push],     // 11 磁带 / 倒着录
   ['deckJam',   { jam: false, spill: .25 },    CAM.tight],    // 12 只有雨声

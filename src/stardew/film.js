@@ -68,22 +68,111 @@ function shotAt(t) {
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+// 屏幕空间雨：放大之后才画，所以雨丝是 1–3 px 的细线，不会变成 6 px 方块
+const rh = n => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+const RAIN_LAYERS = [
+  { n: 120, w: 1, len: 26, sp: 820, a: .22, col: '#93b6d6' },
+  { n: 64, w: 2, len: 52, sp: 1500, a: .40, col: '#c3daf0' },
+  { n: 26, w: 3, len: 92, sp: 2400, a: .62, col: '#e8f4ff' },
+];
+function rainScreen(o, t, WD, HD, q = 1) {
+  const slope = .40;
+  o.save();
+  o.lineCap = 'butt';
+  for (const L of RAIN_LAYERS) {
+    const n = Math.round(L.n * q);
+    o.strokeStyle = L.col; o.lineWidth = L.w; o.globalAlpha = L.a;
+    o.beginPath();
+    for (let i = 0; i < n; i++) {
+      const r1 = rh(i * 3.7 + L.len), r2 = rh(i * 9.1 + 5);
+      const spd = L.sp * (.85 + r2 * .3);
+      const y = ((r1 * (HD + L.len) + t * spd) % (HD + L.len)) - L.len;
+      const x = ((r2 * WD - y * slope) % WD + WD) % WD;
+      const x2 = x + L.len * slope;
+      o.moveTo(x, y); o.lineTo(x2, y - L.len);
+    }
+    o.stroke();
+  }
+  o.restore();
+  o.globalAlpha = 1;
+}
+
+// ── 镜头组：同一场景 + 同一参数 + 时间相邻的镜头合成一段「长镜头」，
+// 组内切换只换字幕、机位连续，不再每次从 z0 重来 ──
+const KEY = s => s.set + '|' + JSON.stringify(s.args || {});
+const RUNS = [];
+{
+  let cur = null;
+  for (let i = 0; i < SHOT_LIST.length; i++) {
+    const s0 = SHOT_LIST[i];
+    if (!cur || KEY(s0) !== cur.key) cur = { key: KEY(s0), t0: s0.t0, t1: s0.t1, cam: s0.cam || { x: 140, y: 104, z0: 1, z1: 1.06 } };
+    cur.t1 = s0.t1;
+    RUNS[i] = cur;
+  }
+}
+function shotIdx(t) {
+  let lo = 0, hi = SHOT_LIST.length - 1;
+  if (t <= SHOT_LIST[0].t0) return 0;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (SHOT_LIST[mid].t0 <= t) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
+// 段落交界：来一下 7 帧的压黑，让换段有个呼吸（不是溶镜）
+const SECTIONS = [26.02, 67.86, 149.82, 228.39];
+function sectionDip(t) {
+  for (const b of SECTIONS) {
+    const d = Math.abs(t - b);
+    if (d < .16) return 1 - d / .16;
+  }
+  return 0;
+}
+
 function draw(t) {
   g.clearRect(0, 0, W, H);
-  const s = shotAt(t);
+  const idx = shotIdx(t);
+  const s = SHOT_LIST[idx];
   const u = clamp((t - s.t0) / Math.max(.001, s.t1 - s.t0), 0, 1);
   const lt = t - s.t0;
   const fn = SETS[s.set] || SETS.busStop;
   fn(g, t, lt, u, s.args);
 
-  const cam = s.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
-  const z = cam.z0 + (cam.z1 - cam.z0) * u;
+  const run = RUNS[idx];
+  const cam = run.cam || s.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
+  const ru = clamp((t - run.t0) / Math.max(.001, run.t1 - run.t0), 0, 1);
+  // 组开场 0.55 秒：机位稍微「落定」，不是硬停
+  const st = clamp((t - run.t0) / .55, 0, 1);
+  const settle = 1 - Math.pow(1 - st, 3);
+  const z = (cam.z0 + (cam.z1 - cam.z0) * ru) * (1 + .018 * (1 - settle));
   const fx = cam.x * SCALE, fy = cam.y * SCALE;
-  document.body.replaceChildren(present(c, P.sky0, { z, ox: -(z - 1) * fx, oy: -(z - 1) * fy }));
+  document.body.replaceChildren(present(c, P.sky0, { z, ox: -(z - 1) * fx, oy: -(z - 1) * fy + (1 - settle) * 7 }));
+
+  const rainy = s.set === 'rainHouse' || s.set === 'busArrive' || s.set === 'endCard' ||
+    (s.set === 'busStop' && s.args && s.args.mode === 'rain') ||
+    (s.set === 'river' && s.args && s.args.rain);
+  if (rainy) rainScreen(c.o, t, c.out.width, c.out.height, s.set === 'endCard' ? 1.25 : 1);
 
   if (s.line) {
-    panel(14, 150, 292, 26);
-    lyric(s.line, 164, 40, 42);
+    // 字幕框跟着切点淡入淡出，别「啪」地出现
+    const fin = clamp((t - s.t0) / .12, 0, 1);
+    const nxt = SHOT_LIST[idx + 1];
+    const keep = nxt && nxt.line === s.line;
+    const fout = keep ? 1 : clamp((s.t1 - t) / .12, 0, 1);
+    const a = Math.min(fin, fout);
+    if (a > .01) {
+      c.o.save(); c.o.globalAlpha = a;
+      panel(14, 150, 292, 26);
+      lyric(s.line, 164, 40, 42);
+      c.o.restore();
+    }
+  }
+  const dip = sectionDip(t);
+  if (dip > .01) {
+    c.o.save(); c.o.globalAlpha = dip * .92; c.o.fillStyle = '#0a0812';
+    c.o.fillRect(0, 0, c.out.width, c.out.height);
+    c.o.restore();
   }
   if (t < 5.2) {
     const a = t < 4.0 ? 1 : (5.2 - t) / 1.2;

@@ -139,7 +139,6 @@ export function rainHouse(g, t, lt, u) {
   hills(g, 78);
   ground(g, 118, H, '#243a2c');
   tree(g, 268, 122, 1.2); tree(g, 42, 120, .9);
-  rainBack(g, t, 150);
   house(g, 96, 84, 92, 50, true, true);
   // 窗里的暖光随呼吸变化
   const k = .82 + .18 * Math.sin(t * 1.6);
@@ -205,7 +204,6 @@ export function busStop(g, t, lt, u, s) {
   if (mode === 'rain') { sky(g, 'night'); } else if (mode === 'night') { sky(g, 'night'); } else { sky(g, 'dusk'); }
   hills(g, 82);
   ground(g, 122);
-  if (mode === 'rain') rainBack(g, t, 150);
   for (const [x, w, h] of [[6, 24, 16], [36, 20, 12], [62, 30, 20], [100, 18, 10]]) {
     rect(g, x, 126 - h, w, h, mode === 'dusk' ? P.cream : '#4a4458');
     for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? P.wood : P.woodDark);
@@ -260,8 +258,25 @@ function busSide(g, x, yb, door) {
   if (door) { rect(g, x + 18, yb - 34, 10, 26, '#10151f'); rect(g, x + 22, yb - 32, 1, 22, '#3f5480'); }
 }
 
+// 河面上的雨圈
+function ripple(g, x, y, t, seed) {
+  const ph = ((t * .55 + seed * .37) % 1);
+  const r = 1 + Math.round(ph * 6);
+  const col = ph > .55 ? '#4d7a80' : '#6f9ba0';
+  for (let a = 0; a < 12; a++) {
+    const th = a / 12 * 6.283;
+    px(g, Math.round(x + Math.cos(th) * r), Math.round(y + Math.sin(th) * r * .45), col);
+  }
+}
+function rainRipples(g, t, y0, y1) {
+  for (let i = 0; i < 22; i++) {
+    const r1 = h1(i * 5.3), r2 = h1(i * 8.7 + 3);
+    const x = Math.round(r1 * W), y = Math.round(y0 + r2 * (y1 - y0));
+    ripple(g, x, y, t, i);
+  }
+}
 // ───────────── 6. 河堤 / 木栈桥 ─────────────
-function riverBands(g, t, dusk = true) {
+function riverBands(g, t, dusk = true, rain = false) {
   sky(g, dusk ? 'dusk' : 'night');
   hills(g, 76);
   // 远岸
@@ -273,6 +288,7 @@ function riverBands(g, t, dusk = true) {
     const y = 98 + ((i % 5) * 3.4 | 0), x = ((i * 53 + Math.floor(t * 6)) % W);
     hline(g, x, x + 4 + (i % 3) * 3, y, i % 4 ? P.waterLit : P.foam);
   }
+  if (rain) rainRipples(g, t, 98, 114);
   // 栈桥：桥面在上，木桩插进水里
   rect(g, 0, 116, W, 2, P.woodLit);
   rect(g, 0, 118, W, 8, P.wood);
@@ -280,8 +296,9 @@ function riverBands(g, t, dusk = true) {
   rect(g, 0, 126, W, 12, '#1d1a1e');
   for (let x = 9; x < W; x += 44) { rect(g, x, 125, 3, 9, P.woodDark); px(g, x + 1, 134, P.wood); }
   ground(g, 138, H, '#2f4a34');
-}export function river(g, t, lt, u, s) {
-  riverBands(g, t, true);
+}
+export function river(g, t, lt, u, s) {
+  riverBands(g, t, true, !!(s && s.rain));
   tree(g, 30, 138, 1.1); tree(g, 288, 136, 1.2);
   const walk = (s && s.walk) !== false;
   const off = walk ? Math.round(u * 26) : 0;
@@ -453,7 +470,6 @@ export function busArrive(g, t, lt, u, s) {
     rect(g, x, 126 - h, w, h, '#4a4458');
     for (let i = 0; i < 8; i++) rect(g, x - 4 + i, 126 - h - i, w + 8 - i * 2, 1, i % 3 ? '#5b5468' : '#3f3a4c');
   }
-  rainBack(g, t, 150);
   rect(g, 0, 144, W, 22, P.pathDark);
   rect(g, 0, 146, W, 18, P.path);
   for (let x = 6; x < W; x += 30) hline(g, x, x + 14, 154, '#cfe0f0');
@@ -472,7 +488,6 @@ export function busArrive(g, t, lt, u, s) {
 // ───────────── 13. 片名卡 ─────────────
 export function endCard(g, t, lt, u) {
   sky(g, 'night'); hills(g, 86); ground(g, 122, H, '#1e2f28');
-  rainBack(g, t, 150, 1.2);
   for (let i = 0; i < 3; i++) rect(g, 20 + i * 34, 100 - i * 4, 28, 22 + i * 4, '#232a3d');
   busstop(g, 250, 146);
   tree(g, 40, 144, 1.3);
