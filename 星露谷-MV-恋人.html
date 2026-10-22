@@ -636,39 +636,91 @@ function river(g, t, lt, u, s) {
 // ───────────── 7. 饭桌（两人 / 一人） ─────────────
 function tableFood(g, t, lt, u, s) {
   const alone = !!(s && s.alone);
-  // 俯看桌面：不出现整身小人，就没有比例问题
-  rect(g, 0, 0, W, 46, alone ? '#1b202e' : '#3a2330');
-  for (let x = 0; x < W; x += 26) vline(g, x, 0, 46, alone ? '#222839' : '#452b3a');
-  rect(g, 0, 42, W, 4, alone ? '#141a26' : '#2a1a24');
-  rect(g, 0, 46, W, H - 46, alone ? '#3f2f26' : '#4a3729');
-  for (let y = 46; y < H; y += 18) { hline(g, 0, W - 1, y, '#3a2b20'); }
-  // 桌面（俯视：一个大梯形）
-  const t0 = 58, t1 = 172;
-  for (let y = t0; y < t1; y++) {
-    const u2 = (y - t0) / (t1 - t0);
-    const half = 74 + u2 * 46;
-    hline(g, Math.round(160 - half), Math.round(160 + half), y, y < t0 + 4 ? '#8a6244' : '#7a563c');
-    if (y % 7 === 0) for (const f of [-.6, -.2, .2, .6]) px(g, Math.round(160 + half * f), y, '#6b4a33');
+  rect(g, 0, 0, W, H, alone ? '#151118' : '#1b1520');
+  for (let y = 0; y < 96; y += 6) hline(g, 0, W - 1, y, '#221b28');
+  for (let r = 30; r > 0; r -= 3) for (let a = 0; a < 40; a++) {
+    const th = a / 40 * 6.2832;
+    const x = Math.round(272 + Math.cos(th) * r), y = Math.round(26 + Math.sin(th) * r * .8);
+    if (x >= 0 && x < W && y >= 0 && y < H && BAYT(x, y, 3)) px(g, x, y, '#3a2f33');
   }
-  hline(g, 86, 234, t0, '#a67a55'); hline(g, 84, 236, t0 + 1, '#8a6244');
-  // 碗、筷、蒸汽
-  const bowlY = 96;
-  if (alone) { bowl(g, 146, bowlY); hline(g, 170, 190, bowlY + 4, '#d8c8a8'); steam(g, 155, bowlY - 4, t); }
-  else {
-    bowl(g, 118, bowlY); bowl(g, 186, bowlY);
-    hline(g, 140, 158, bowlY + 4, '#d8c8a8'); hline(g, 168, 184, bowlY + 4, '#d8c8a8');
-    steam(g, 127, bowlY - 4, t); steam(g, 195, bowlY - 4, t + 1.7);
-    // 两双手：从画面下缘伸进来
-    hand(g, 128, 134, 1); hand(g, 196, 134, -1);
-  }
-  if (alone) hand(g, 148, 136, 1);
-  // 一碟青菜
-  greens(g, 150, 118, 9);
-  if (alone) dither(g, 0, 0, W, H, 'rgba(16,20,32,.42)', 'rgba(0,0,0,0)', 10);
-  // 桌面上的暖光
-  for (let y = t0; y < t1; y += 2) for (let x = 120; x < 200; x += 2) if (BAYT(x, y, 6)) px(g, x, y, '#8f6a4a');
+  rect(g, 0, 96, W, H - 96, '#5a4232');
+  for (let y = 96; y < H; y += 13) hline(g, 0, W - 1, y, '#4a3527');
+  hline(g, 0, W - 1, 96, '#6d5138'); hline(g, 0, W - 1, 97, '#7c5c40');
+  const bx = alone ? 150 : 112, by = alone ? 112 : 110;
+  bowlBig(g, bx, by, alone ? 1.1 : 1);
+  if (!alone) bowlBig(g, 246, 112, .72);
+  chopsticks(g, 150, 134, .92);
+  if (!alone) chopsticks(g, 24, 142, .8);
+  greensPlate(g, alone ? 240 : 216, 140, .8);
+  steam2(g, bx + 4, by - 30, t, 1);
+  if (!alone) steam2(g, 248, 82, t + 1.3, .7);
+  dither(g, 0, 0, W, H, alone ? 'rgba(16,20,32,.42)' : 'rgba(20,14,22,.18)', 'rgba(0,0,0,0)', 12);
 }
-function steam(g, x, y, t) {
+function bowlBig(g, cx, cy, sc) {
+  const w = Math.round(64 * sc), h = Math.round(26 * sc);
+  const hw = w / 2;
+  // 碗身（从上往下收）
+  for (let i = 0; i < h; i++) {
+    const u2 = i / h;
+    const half = Math.round(hw * (1 - .34 * u2));
+    const col = u2 < .12 ? '#efe9dd' : (u2 < .7 ? '#e6dfd1' : '#d2cabb');
+    hline(g, cx - half, cx + half, cy + i, col);
+  }
+  hline(g, cx - Math.round(hw * .66), cx + Math.round(hw * .66), cy + h - 1, '#a9a294');
+  // 蓝边（碗身上三分之一）
+  const by2 = cy + Math.round(h * .5);
+  for (let i = 0; i < 2; i++) {
+    const half = Math.round(hw * (1 - .34 * (by2 - cy + i) / h));
+    hline(g, cx - half + 1, cx + half - 1, by2 + i, i ? '#2f5878' : '#5a8cb4');
+  }
+  // 碗口椭圆
+  for (let x = -hw; x <= hw; x++) {
+    const t = Math.sqrt(Math.max(0, 1 - (x / hw) ** 2));
+    vline(g, Math.round(cx + x), cy - Math.round(4 * t), cy + Math.round(3 * t), '#f6f1e6');
+  }
+  // 米饭：椭圆内填白，中间隆起两像素
+  for (let x = -hw + 3; x <= hw - 3; x++) {
+    const t = Math.sqrt(Math.max(0, 1 - (x / (hw - 7)) ** 2));
+    vline(g, Math.round(cx + x), cy - Math.round(3 * t) - 2, cy + Math.round(2 * t) - 1, '#fdfbf5');
+  }
+  for (let i = 0; i < 6; i++) px(g, cx - 12 + i * 5, cy - 2 - (i % 3), '#ffffff');
+  // 碗底阴影
+  for (let i = -hw * .7; i <= hw * .7; i += 2) px(g, Math.round(cx + i), cy + h, '#38281e');
+}function chopsticks(g, x, y, sc) {
+  const len = Math.round(92 * sc);
+  for (let k = 0; k < 2; k++) {
+    const y0 = y + k * 3;
+    for (let i = 0; i < len; i++) {
+      const yy = y0 - Math.round(i * .16);
+      rect(g, x + i, yy, 1, 2, '#e0cda6');
+    }
+    for (let i = 0; i < len; i++) {
+      const yy = y0 - Math.round(i * .16) + 2;
+      px(g, x + i, yy, '#a8906e');
+    }
+  }
+}function greensPlate(g, cx, cy, sc) {
+  const w = Math.round(52 * sc);
+  rect(g, cx - w / 2, cy, w, 3, '#e8e2d6');
+  rect(g, cx - w / 2 + 2, cy + 3, w - 4, 2, '#c9c2b4');
+  for (let i = 0; i < 9; i++) {
+    const x = cx - w / 2 + 4 + i * (w - 8) / 8;
+    const hh = 6 + (i % 3) * 2;
+    vline(g, Math.round(x), cy - hh, cy - 1, i % 2 ? '#4d7c46' : '#3d6638');
+    px(g, Math.round(x) + (i % 2 ? 1 : -1), cy - hh, '#5f9155');
+  }
+  for (let i = 0; i < 4; i++) px(g, cx - w / 2 + 6 + i * 12, cy - 2, '#8fb87a');
+}
+function steam2(g, x, y, t, sc) {
+  for (let k = 0; k < 3; k++) {
+    for (let i = 0; i < 18; i++) {
+      const ph = (t * .55 + k * .33 + i / 18) % 1;
+      const yy = y - Math.round(ph * 44 * sc);
+      const xx = x + Math.round(Math.sin((ph * 2.2 + k) * 3.14) * 6 * sc);
+      if (BAYT(xx, yy, 3)) px(g, xx, yy, ph > .6 ? '#8f8798' : '#c3bccb');
+    }
+  }
+}function steam(g, x, y, t) {
   for (let i = 0; i < 3; i++) {
     const ph = (t * .8 + i * .33) % 1;
     const yy = y - Math.round(ph * 10);
@@ -1028,7 +1080,7 @@ const CAM = {
   left:   { x: 96,  y: 104, z0: 1.04, z1: 1.12 },
   drift:  { x: 180, y: 96,  z0: 1.26, z1: 1.14 },
   foot:   { x: 112, y: 106, z0: 1.05, z1: 1.14 },
-  meal:   { x: 160, y: 96, z0: 1.06, z1: 1.16 },
+  meal:   { x: 158, y: 118, z0: 1.18, z1: 1.30 },
 };
 
 // 36 个主镜头（顺序对应 36 句）
