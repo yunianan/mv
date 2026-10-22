@@ -96,7 +96,7 @@ function deck(g, x, y, on) {
   for (let i = 0; i < 4; i++) rect(g, x + 5 + i * 6, y + 17, 4, 2, i === 1 && on ? P.lamp : '#565068');
   rect(g, x + 40, y + 17, 9, 2, '#565068');
 }
-function cassette(g, x, y, s = 1, label = true) {
+export function cassette(g, x, y, s = 1, label = true) {
   const w = 44 * s, h = 28 * s;
   rect(g, x, y, w, h, '#33303c');
   rect(g, x + 1 * s, y + 1 * s, w - 2 * s, h - 2 * s, '#474354');

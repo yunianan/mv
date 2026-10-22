@@ -1,4 +1,4 @@
-﻿// 场景：农舍黄昏、巴士站、雨中空屋 —— 星露谷风格的 3/4 俯视
+// 场景：农舍黄昏、巴士站、雨中空屋 —— 星露谷风格的 3/4 俯视
 import { rect, px, hline, vline, dither, vgrad, P, W, H } from './px.js';
 
 // —— 天空 ——
@@ -61,31 +61,64 @@ export function ground(g, y0 = 128, y1 = H, base = P.grass) {
 // —— 房子 ——
 export function house(g, x, y, w = 92, h = 54, lit = true, night = false) {
   const WALL = night ? '#6a6276' : P.cream, LINE = night ? '#5b5468' : P.dress;
-  // 墙
-  rect(g, x, y, w, h, WALL);
-  for (let yy = y; yy < y + h; yy += 5) hline(g, x, x + w - 1, yy, LINE);
-  // 屋顶
-  for (let i = 0; i < 18; i++) {
-    const ww = w + 10 - i * 2;
-    rect(g, x - 5 + i, y - i, ww, 1, i % 3 === 0 ? P.woodDark : P.wood);
-  }
-  rect(g, x - 6, y + 17, w + 12, 3, P.woodDark);
-  // 门
-  const dx = x + w / 2 - 7;
-  rect(g, dx, y + h - 24, 14, 24, P.woodDark);
-  rect(g, dx + 1, y + h - 23, 12, 22, P.wood);
-  vline(g, dx + 6, y + h - 23, y + h - 2, P.woodDark);
-  px(g, dx + 11, y + h - 12, P.cream);
-  // 窗
-  for (const wx of [x + 10, x + w - 22]) {
-    rect(g, wx, y + 8, 12, 10, P.woodDark);
-    rect(g, wx + 1, y + 9, 10, 8, lit ? P.lamp : P.waterDark);
-    if (lit) { rect(g, wx + 2, y + 10, 8, 6, P.lampLit); rect(g, wx + 3, y + 11, 4, 3, P.lamp); }
-    vline(g, wx + 6, y + 9, y + 16, P.woodDark);
-  }
-}
+  const RF = night ? '#4a3546' : P.wood, RFD = night ? '#33232f' : P.woodDark;
+  const TRIM = night ? '#3a3345' : '#b9a98c';
 
-// —— 栅栏 ——
+  // 地基：一排石砌
+  rect(g, x - 2, y + h - 5, w + 4, 5, TRIM);
+  for (let i = 0; i < w + 4; i += 7) vline(g, x - 2 + i, y + h - 5, y + h - 1, night ? '#2c2635' : '#a3937a');
+
+  // 墙
+  rect(g, x, y, w, h - 5, WALL);
+  for (let yy = y + 3; yy < y + h - 5; yy += 4) hline(g, x, x + w - 1, yy, LINE);
+
+  // 屋顶：瓦，隔行换色；梯形从檐口收到屋脊
+  for (let i = 0; i < 22; i++) {
+    const ww = w + 16 - i * 2;
+    rect(g, x - 8 + i, y + 2 - i, ww, 1, i % 4 === 0 ? RFD : RF);
+  }
+  // 屋脊压顶（宽度跟着屋顶最上面那一行，别往外伸）
+  rect(g, x + 14, y - 20, w - 28, 2, night ? '#3a2a3a' : '#2e2320');
+  rect(g, x + 14, y - 18, w - 28, 1, night ? '#4a3a4a' : '#8a6a4a');
+  // 檐口（只留一根浅色压边，别画成横缝）
+  rect(g, x - 6, y + 1, w + 12, 1, night ? '#43394f' : '#8a6a4a');
+  rect(g, x + w + 4, y + 4, 2, h - 14, night ? '#332b3e' : '#7a5a42');
+
+  // 烟囱
+  const cx = x + w - 26;
+  rect(g, cx, y - 30, 11, 14, night ? '#3b3247' : '#7d5f4a');
+  rect(g, cx - 1, y - 33, 13, 4, night ? '#2c2536' : '#5e4636');
+  for (let i = 0; i < 3; i++) px(g, cx + 3 + (i % 2), y - 36 - i * 3, night ? '#3e3648' : '#c9bda8');
+
+  // 门：木纹 + 门把 + 门口暖光
+  const dx = x + w / 2 - 7;
+  rect(g, dx - 1, y + h - 26, 16, 26, night ? '#2b2434' : '#6b4f3a');
+  rect(g, dx, y + h - 25, 14, 25, night ? '#403548' : P.wood);
+  for (let i = 0; i < 5; i++) vline(g, dx + 2 + i * 3, y + h - 24, y + h - 2, night ? '#372e40' : '#8a6a4a');
+  px(g, dx + 11, y + h - 13, night ? '#e8c07a' : P.lamp);
+  // 门楣小檐
+  rect(g, dx - 3, y + h - 28, 20, 2, night ? '#2b2434' : '#5e4636');
+  // 门口落地的暖光
+  rect(g, dx + 2, y + h, 10, 1, night ? '#7a5a3a' : '#e8c890');
+
+  // 窗：四格 + 窗台 + 帷幔
+  for (const wx of [x + 10, x + w - 22]) {
+    rect(g, wx - 1, y + 7, 14, 12, night ? '#2b2434' : '#6b4f3a');
+    rect(g, wx, y + 8, 12, 10, lit ? P.lamp : P.waterDark);
+    if (lit) { rect(g, wx + 1, y + 9, 10, 8, P.lampLit); rect(g, wx + 2, y + 10, 5, 4, P.lamp); }
+    vline(g, wx + 6, y + 8, y + 17, night ? '#2b2434' : '#6b4f3a');
+    hline(g, wx, wx + 11, y + 13, night ? '#2b2434' : '#6b4f3a');
+    rect(g, wx - 2, y + 19, 16, 2, night ? '#3a3345' : '#b9a98c');
+    if (lit) { rect(g, wx + 1, y + 9, 3, 8, 'rgba(255,240,200,.35)'); }
+  }
+
+  // 爬墙的藤（一点点）
+  for (let i = 0; i < 5; i++) px(g, x + 4 + i * 2, y + h - 16 + (i % 3), night ? '#2e3a34' : '#5f7a4a');
+
+  // 屋顶小旗（风吹的）
+  rect(g, x + 16, y - 24, 1, 6, night ? '#3a3345' : '#7a5a42');
+  px(g, x + 17, y - 24, night ? '#5a4a5e' : '#c26a5a');
+}
 export function fence(g, x0, x1, y) {
   vline(g, x0, y - 8, y + 3, P.woodLit); vline(g, x1, y - 8, y + 3, P.woodLit);
   hline(g, x0, x1, y - 5, P.woodLit); hline(g, x0, x1, y - 1, P.woodLit);

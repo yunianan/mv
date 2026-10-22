@@ -1,10 +1,10 @@
 // 星露谷风格 · 《恋人》MV —— 整首 275.9 秒，逐镜头渲染
 // 渲染：node core/render/video.mjs <此目录> --fps 24 --workers 3
-import { canvas, present, rect, P, W, H, SCALE } from './px.js';
+import { canvas, present, rect, px, hline, vline, P, W, H, SCALE } from './px.js';
 
 const cf = canvas();   // 第二个世界缓冲：只在切场景的交叉淡入时用
 import { loadSprites } from './sprite.js';
-import { SETS } from './sets.js';
+import { SETS, cassette } from './sets.js';
 import { SHOT_LIST, TOTAL } from './scenes.js';
 
 const qs = new URLSearchParams(location.search);
@@ -41,36 +41,104 @@ function lyric(str, y = 160, x = 40, size = 42) {
 }
 
 // 片名卡（用屏幕空间大字）
+// 三个片名方案，用 ?tt=A / B / C 切换
+const TT = (new URLSearchParams(location.search).get('tt') || 'P').toUpperCase();
+
+// ── 像素字：把系统字渲染成 1 位图再逐格铺，和画面同像素格 ──
+const BAY = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+const tcv = document.createElement('canvas');
+tcv.width = 400; tcv.height = 100;
+const tcx = tcv.getContext('2d');
+function tbit(str, size) {
+  tcx.clearRect(0, 0, 400, 100);
+  tcx.font = `700 ${size}px "Microsoft YaHei", sans-serif`;
+  tcx.textAlign = 'center'; tcx.textBaseline = 'middle';
+  tcx.fillStyle = '#fff';
+  tcx.fillText(str, 200, 50);
+  const im = tcx.getImageData(0, 0, 400, 100).data;
+  return (x, y) => (x < 0 || y < 0 || x >= 400 || y >= 100 ? false : im[(y * 400 + x) * 4 + 3] > 120);
+}
+// 逐格铺像素字，按字形包围盒居中；put(x,y,color) 决定落在哪个画布
+function pixTextPut(str, cx, cy, size, col, put, outline) {
+  const on = tbit(str, size);
+  let minx = 400, miny = 100, maxx = -1, maxy = -1;
+  for (let y = 0; y < 100; y++) for (let x = 0; x < 400; x++) {
+    if (!on(x, y)) continue;
+    if (x < minx) minx = x; if (y < miny) miny = y;
+    if (x > maxx) maxx = x; if (y > maxy) maxy = y;
+  }
+  if (maxx < 0) return { w: 0, h: 0 };
+  const x0 = Math.round(cx - (minx + maxx + 1) / 2), y0 = Math.round(cy - (miny + maxy + 1) / 2);
+  if (outline) {
+    for (let y = miny - 1; y <= maxy + 1; y++) for (let x = minx - 1; x <= maxx + 1; x++) {
+      if (!on(x, y)) continue;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        if (!on(x + dx, y + dy)) put(x0 + x + dx, y0 + y + dy, outline);
+      }
+    }
+  }
+  for (let y = miny; y <= maxy; y++) for (let x = minx; x <= maxx; x++) if (on(x, y)) put(x0 + x, y0 + y, col);
+  return { w: maxx - minx + 1, h: maxy - miny + 1 };
+}
+function pixText(g, str, cx, cy, size, col, outline) {
+  return pixTextPut(str, cx, cy, size, col, (x, y, c) => px(g, x, y, c), outline);
+}
+function dim(g, level, col = '#0b0910') {
+  const th = level * 16;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (BAY[y & 3][x & 3] < th) px(g, x, y, col);
+}
+// 竖向渐变的压暗：上面浓、往下散，避免整屏一块死板棋盘
+function dimV(g, top, y0, y1, col = '#0b0910') {
+  for (let y = 0; y < H; y++) {
+    const lv = y <= y0 ? top : y >= y1 ? 0 : top * (1 - (y - y0) / (y1 - y0));
+    if (lv <= 0.02) continue;
+    const th = lv * 16;
+    for (let x = 0; x < W; x++) if (BAY[y & 3][x & 3] < th) px(g, x, y, col);
+  }
+}
+
+// 片名：两种方案，都是「像素字」——和画面同一套格子
+//  P 片名卡：抖动压暗 + 居中大字 + 一条细线
+//  T 道具：右下角一盘磁带，贴纸上的字就是片名
+function worldTitle(g, main, t) {
+  if (TT === 'T') {
+    const s = 2.4, x = 172, y = 104;
+    cassette(g, x, y, s, false);
+    // 自己贴一张干净的米色标签，片名写在上面
+    const lx = Math.round(x + 3 * s), ly = Math.round(y + 4 * s);
+    const lw = Math.round(38 * s), lh = Math.round(13 * s);
+    rect(g, lx, ly, lw, lh, '#efe6d2');
+    rect(g, lx, ly, lw, 1, '#d8c69e');
+    rect(g, lx, ly + lh - 1, lw, 1, '#c9b48c');
+    rect(g, lx + 2, ly + 2, 3, 3, '#b03a3a');
+    pixText(g, main, lx + lw * .58, ly + lh * .48, 16, '#2a2430');
+    return;
+  }
+  // P：黑场片名卡，4.15s 起用抖动慢慢散开，露出雨夜
+  const cover = t < 4.15 ? 1 : clamp(1 - (t - 4.15) / 0.30, 0, 1);
+  if (cover >= 0.999) rect(g, 0, 0, W, H, '#0b0910');
+  else if (cover > 0.02) dim(g, cover, '#0b0910');
+  pixText(g, main, 160, 86, 42, '#fff6e4', '#141019');
+  rect(g, 118, 112, 84, 2, '#b0704e');
+  rect(g, 118, 114, 84, 1, '#2a1e1e');
+}
+
 function titleCard(main, sub) {
-  const o = c.o;
-  o.save();
-  o.textAlign = 'center'; o.textBaseline = 'middle';
-  o.font = '700 92px "Microsoft YaHei", sans-serif';
-  o.letterSpacing = '14px';
-  o.fillStyle = '#160f1c';
-  o.fillText(main, W * SCALE / 2 + 6, 74 * SCALE + 6);
-  o.fillStyle = '#fff6e4';
-  o.fillText(main, W * SCALE / 2, 74 * SCALE);
-  o.font = '600 34px "Microsoft YaHei", sans-serif';
-  o.letterSpacing = '8px';
-  o.fillStyle = '#c9b9d6';
-  o.fillText(sub, W * SCALE / 2, 132 * SCALE);
+  const o = c.o, cx = W * SCALE / 2;
+  o.save(); o.textBaseline = 'middle'; o.textAlign = 'center';
+  if (TT === 'T') {
+    o.textAlign = 'left';
+    o.fillStyle = '#cfbfb0'; o.font = '500 22px "Microsoft YaHei", sans-serif';
+    o.letterSpacing = '4px';
+    o.fillText(sub, 84, 1032);
+  } else {
+    o.fillStyle = '#d5c6b8'; o.font = '500 24px "Microsoft YaHei", sans-serif';
+    o.letterSpacing = '5px';
+    o.fillText(sub, cx, 726);
+  }
   o.restore();
 }
-
-function shotAt(t) {
-  let lo = 0, hi = SHOT_LIST.length - 1;
-  if (t <= SHOT_LIST[0].t0) return SHOT_LIST[0];
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (SHOT_LIST[mid].t0 <= t) lo = mid; else hi = mid - 1;
-  }
-  return SHOT_LIST[lo];
-}
-
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-
-// 屏幕空间雨：放大之后才画，所以雨丝是 1–3 px 的细线，不会变成 6 px 方块
+// 屏幕空间雨：实色、细线，三层靠颜色深浅分远近（半透明叠抖动会被看成第二个方向）
 const rh = n => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
 const RAIN_LAYERS = [
   { n: 110, w: 1, len: 24, sp: 760, col: '#53718f' },
@@ -98,8 +166,10 @@ function rainScreen(o, t, WD, HD, q = 1) {
   }
   o.restore();
 }
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
 // ── 镜头组：同一场景 + 同一参数 + 时间相邻的镜头合成一段「长镜头」，
-// 组内切换只换字幕、机位连续，不再每次从 z0 重来 ──
+// 组内切换只换字幕、机位连续 ──
 const KEY = s => s.set + '|' + JSON.stringify(s.args || {});
 const RUNS = [];
 {
@@ -120,8 +190,7 @@ function shotIdx(t) {
   }
   return lo;
 }
-
-// 段落交界：来一下 7 帧的压黑，让换段有个呼吸（不是溶镜）
+// 段落交界：7 帧压黑
 const SECTIONS = [26.02, 67.86, 149.82, 228.39];
 function sectionDip(t) {
   for (const b of SECTIONS) {
@@ -130,8 +199,6 @@ function sectionDip(t) {
   }
   return 0;
 }
-
-// 把某一镜在 tt 时刻画进 dst（不碰 DOM），用于切场景时叠上一镜的余像
 function renderAt(dst, shot, tt) {
   dst.g.clearRect(0, 0, W, H);
   const u = clamp((tt - shot.t0) / Math.max(.001, shot.t1 - shot.t0), 0, 1);
@@ -150,6 +217,7 @@ function draw(t) {
   const lt = t - s.t0;
   const fn = SETS[s.set] || SETS.busStop;
   fn(g, t, lt, u, s.args);
+  if (idx === 0) worldTitle(g, '恋人', t);
 
   const run = RUNS[idx];
   const cam = run.cam || s.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
@@ -202,8 +270,8 @@ function draw(t) {
     c.o.fillRect(0, 0, c.out.width, c.out.height);
     c.o.restore();
   }
-  if (t < 5.2) {
-    const a = t < 4.0 ? 1 : (5.2 - t) / 1.2;
+  if (t < 4.45) {
+    const a = t < 4.15 ? 1 : (4.45 - t) / 0.30;
     if (a > 0.02) {
       c.o.save(); c.o.globalAlpha = a;
       titleCard('恋人', 'based on 李荣浩《恋人》 ／ Stardew Valley fan film');
