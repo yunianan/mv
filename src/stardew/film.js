@@ -73,32 +73,31 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 // 屏幕空间雨：放大之后才画，所以雨丝是 1–3 px 的细线，不会变成 6 px 方块
 const rh = n => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
 const RAIN_LAYERS = [
-  { n: 120, w: 1, len: 26, sp: 820, a: .22, col: '#93b6d6' },
-  { n: 64, w: 2, len: 52, sp: 1500, a: .40, col: '#c3daf0' },
-  { n: 26, w: 3, len: 92, sp: 2400, a: .62, col: '#e8f4ff' },
+  { n: 110, w: 1, len: 24, sp: 760, col: '#53718f' },
+  { n: 70, w: 1, len: 40, sp: 1300, col: '#8fb2d2' },
+  { n: 30, w: 2, len: 58, sp: 2000, col: '#d3e6f8' },
 ];
 function rainScreen(o, t, WD, HD, q = 1) {
   const slope = .40;
   o.save();
   o.lineCap = 'butt';
+  o.globalAlpha = 1;
   for (const L of RAIN_LAYERS) {
     const n = Math.round(L.n * q);
-    o.strokeStyle = L.col; o.lineWidth = L.w; o.globalAlpha = L.a;
+    o.strokeStyle = L.col; o.lineWidth = L.w;
     o.beginPath();
     for (let i = 0; i < n; i++) {
       const r1 = rh(i * 3.7 + L.len), r2 = rh(i * 9.1 + 5);
       const spd = L.sp * (.85 + r2 * .3);
       const y = ((r1 * (HD + L.len) + t * spd) % (HD + L.len)) - L.len;
       const x = ((r2 * WD - y * slope) % WD + WD) % WD;
-      const x2 = x + L.len * slope;
-      o.moveTo(x, y); o.lineTo(x2, y - L.len);
+      o.moveTo(x, y);
+      o.lineTo(x + L.len * slope, y - L.len);
     }
     o.stroke();
   }
   o.restore();
-  o.globalAlpha = 1;
 }
-
 // ── 镜头组：同一场景 + 同一参数 + 时间相邻的镜头合成一段「长镜头」，
 // 组内切换只换字幕、机位连续，不再每次从 z0 重来 ──
 const KEY = s => s.set + '|' + JSON.stringify(s.args || {});
