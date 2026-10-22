@@ -18,11 +18,11 @@ function rainLayer(g, t, n, len, speed, col, x0, y0, x1, y1, slope = .38, seed =
     const spd = speed * (.8 + r2 * .4);
     const y = y0 + ((r1 * span + t * spd) % (span + len)) - len;
     if (y < y0 - len || y > y1) continue;
-    const headX = ((r2 * w + (y - y0) * slope + seed * 13) % w + w) % w + x0;
+    const headX = ((r2 * w - (y - y0) * slope + seed * 13) % w + w) % w + x0;
     for (let j = 0; j < len; j++) {
       const yy = Math.round(y) - j;
       if (yy < y0 || yy > y1) continue;
-      const xx = Math.round(headX - j * slope);
+      const xx = Math.round(headX + j * slope);
       if (xx < x0 || xx >= x1) continue;
       px(g, xx, yy, j === 0 ? '#dceaf8' : col);
     }
@@ -148,7 +148,6 @@ export function rainHouse(g, t, lt, u) {
   }
   rect(g, 138, 112, 10, 20, P.woodDark);
   fence(g, 8, 88, 128);
-  rainFront(g, t, 150);
   rainSplash(g, t, 152, 16);
   puddle(g, 60, 150, 26, t); puddle(g, 200, 156, 34, t);
 }
@@ -216,14 +215,14 @@ export function busStop(g, t, lt, u, s) {
   busstop(g, 190, 146);
   tree(g, 268, 144, 1.2); tree(g, 24, 146, 1.0);
   const who = (s && s.who) || 'both';
-  if (who === 'none') { if (mode === 'rain') { rainFront(g, t, 150); rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); } return; }
+  if (who === 'none') { if (mode === 'rain') { rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); } return; }
   if (who === 'her') actor(g, 'penny', 150, 118, { dir: 'right', frame: Math.floor(t * 3) });
   else if (who === 'him') actor(g, 'sebastian', 150, 118, { dir: 'left', frame: Math.floor(t * 3) });
   else {
     actor(g, 'sebastian', 132, 118, { dir: 'right', frame: Math.floor(t * 3) });
     actor(g, 'penny', 170, 118, { dir: 'left', frame: Math.floor(t * 3) });
   }
-  if (mode === 'rain') { rainFront(g, t, 150); rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); }
+  if (mode === 'rain') { rainSplash(g, t, 150, 14); puddle(g, 40, 150, 30, t); }
   if (mode === 'night') { px(g, 200, 132, P.lamp); px(g, 200, 133, P.lampLit); }
 }
 
@@ -445,9 +444,9 @@ export function windowRain(g, t, lt, u) {
     if (i % 2) rect(g, bx + 5, wy + wh - 14 - bh, 3, 3, '#e8b86a');
   }
   // 雨：贴在玻璃上，斜、密、短
-  rainLayer(g, t, 30, 2, 30, '#3f5f86', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .4, 11);
-  rainLayer(g, t, 22, 4, 62, '#7fa3c8', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .5, 12);
-  rainLayer(g, t, 8, 7, 120, '#cfe4f6', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, .6, 13);
+  rainLayer(g, t, 26, 5, 40, '#3f5f86', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, 1.0, 11);
+  rainLayer(g, t, 16, 7, 72, '#7fa3c8', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, 1.0, 12);
+  rainLayer(g, t, 6, 9, 130, '#cfe4f6', wx + 1, wy + 1, wx + ww - 1, wy + wh - 2, 1.0, 13);
   // 窗棂
   vline(g, wx + ww / 2, wy, wy + wh, P.woodDark);
   hline(g, wx, wx + ww, wy + wh / 2, P.woodDark);
@@ -481,8 +480,7 @@ export function busArrive(g, t, lt, u, s) {
     busSide(g, bx, 168, p > .92);
     // 车灯扫过站台
     if (p > .5) { const a = clampS((p - .5) * 2, 0, 1); dither(g, 0, 146, 176, 18, 'rgba(255,224,150,' + (.22 * a).toFixed(2) + ')', 'rgba(0,0,0,0)', 5); }
-  }
-  rainFront(g, t, 150); rainSplash(g, t, 150, 12);
+  } rainSplash(g, t, 150, 12);
 }
 
 // ───────────── 13. 片名卡 ─────────────
@@ -490,8 +488,7 @@ export function endCard(g, t, lt, u) {
   sky(g, 'night'); hills(g, 86); ground(g, 122, H, '#1e2f28');
   for (let i = 0; i < 3; i++) rect(g, 20 + i * 34, 100 - i * 4, 28, 22 + i * 4, '#232a3d');
   busstop(g, 250, 146);
-  tree(g, 40, 144, 1.3);
-  rainFront(g, t, 150, 1.3); rainSplash(g, t, 150, 18);
+  tree(g, 40, 144, 1.3); rainSplash(g, t, 150, 18);
   puddle(g, 120, 156, 60, t);
   dither(g, 0, 0, W, H, 'rgba(8,10,20,.3)', 'rgba(0,0,0,0)', 12);
 }

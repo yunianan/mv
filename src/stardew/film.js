@@ -1,6 +1,8 @@
 // 星露谷风格 · 《恋人》MV —— 整首 275.9 秒，逐镜头渲染
 // 渲染：node core/render/video.mjs <此目录> --fps 24 --workers 3
 import { canvas, present, rect, P, W, H, SCALE } from './px.js';
+
+const cf = canvas();   // 第二个世界缓冲：只在切场景的交叉淡入时用
 import { loadSprites } from './sprite.js';
 import { SETS } from './sets.js';
 import { SHOT_LIST, TOTAL } from './scenes.js';
@@ -130,6 +132,17 @@ function sectionDip(t) {
   return 0;
 }
 
+// 把某一镜在 tt 时刻画进 dst（不碰 DOM），用于切场景时叠上一镜的余像
+function renderAt(dst, shot, tt) {
+  dst.g.clearRect(0, 0, W, H);
+  const u = clamp((tt - shot.t0) / Math.max(.001, shot.t1 - shot.t0), 0, 1);
+  const fn = SETS[shot.set] || SETS.busStop;
+  fn(dst.g, tt, tt - shot.t0, u, shot.args);
+  const cam = shot.cam || { x: 140, y: 104, z0: 1, z1: 1.06 };
+  const z = cam.z0 + (cam.z1 - cam.z0) * u;
+  present(dst, P.sky0, { z, ox: -(z - 1) * cam.x * SCALE, oy: -(z - 1) * cam.y * SCALE });
+}
+
 function draw(t) {
   g.clearRect(0, 0, W, H);
   const idx = shotIdx(t);
@@ -148,6 +161,22 @@ function draw(t) {
   const z = (cam.z0 + (cam.z1 - cam.z0) * ru) * (1 + .018 * (1 - settle));
   const fx = cam.x * SCALE, fy = cam.y * SCALE;
   document.body.replaceChildren(present(c, P.sky0, { z, ox: -(z - 1) * fx, oy: -(z - 1) * fy + (1 - settle) * 7 }));
+
+  // 换场景：0.26 秒交叉淡入，上一镜的余像叠在上面慢慢退掉
+  const prev = idx > 0 ? SHOT_LIST[idx - 1] : null;
+  if (prev && RUNS[idx] !== RUNS[idx - 1] && !window.__noXF && t - s.t0 < .28) {
+    const nearSec = SECTIONS.some(b => Math.abs(s.t0 - b) < .22);
+    if (!nearSec) {
+      const xf = clamp((t - s.t0) / .28, 0, 1);
+      const k = xf * xf * (3 - 2 * xf);
+      renderAt(cf, prev, Math.max(prev.t0 + .02, prev.t1 - .06));
+      c.o.save();
+      c.o.globalAlpha = 1 - k;
+      c.o.drawImage(cf.out, 0, 0);
+      c.o.restore();
+      c.o.globalAlpha = 1;
+    }
+  }
 
   const rainy = s.set === 'rainHouse' || s.set === 'busArrive' || s.set === 'endCard' ||
     (s.set === 'busStop' && s.args && s.args.mode === 'rain') ||
